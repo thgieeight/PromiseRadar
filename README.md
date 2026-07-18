@@ -1,6 +1,6 @@
 # Promise Radar
 
-Promise Radar is a focused prototype / idea (early-stage). It finds commitments hidden inside everyday conversations and turns them into socially-aware next actions.
+Promise Radar is a focused prototype / idea (early-stage). It finds commitments hidden inside everyday conversations and turns them into socially-aware next actions. It was fully made using codex and chatgpt 5.6 luna medium and used blackbox to commit on github. 
 
 ## Why this is different
 
