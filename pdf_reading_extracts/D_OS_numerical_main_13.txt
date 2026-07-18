@@ -1,0 +1,2806 @@
+
+
+===== PAGE 1 =====
+PF2V-WM: Phase-Field Fracture Veil World Models
+Fracture as Latent Inference in a Multiscale Anisotropic Medium
+Thgie Eight
+forreserachonlyso@gmail.com
+May 6, 2026
+Transparency and Provenance Note
+This manuscript is an exploratory research draft and should not be interpreted as a peer-reviewed
+claim of novelty, priority, or superior performance over alternative approaches. Its purpose is to
+document a diagnostic experimental program on latent reasoning control.
+Large language models, including ChatGPT, Gemini, and Grok, assisted with brainstorming, draft-
+ing, editing, code scaffolding, and result interpretation. The experimental direction, code execution,
+result selection, and final framing were determined and verified by the author.
+Readers should therefore treat this paper as an early proof-of-concept report whose empirical claims
+depend on the included synthetic experiments and should be independently verified before they are
+treated as established scientific conclusions.
+For additional transparency, the author also provides supporting materials, including chat conver-
+sations and code used to run the experiments.
+•Original ChatGPT conversation:PLACEHOLDER-CHATGPT-LINK
+•Original Gemini conversation:PLACEHOLDER-GEMINI-LINK
+•Original Grok conversation:PLACEHOLDER-GROK-LINK
+•Colab notebook:PLACEHOLDER-COLAB-LINK
+Abstract
+We propose thePhase-Field Fracture Veil World Model(PF 2V-WM), a world-modeling
+architecture in which latent inference is implemented as controlled fracture propagation in a
+structured medium. The model maintains spatial fields for damage, potential, and memory; ob-
+servations inject forcing; and an unrolled variational solver evolves the latent state using fracture
+regularization, anisotropic transport, geometric priors, and slow material hardening. The paper
+is deliberately both constructive and empirical: it formalizes the energy-based latent dynamics,
+describes a practical neural implementation, and records a sequence of prototype experiments
+on synthetic path-formation and obstacle-bending tasks. Early runs mostly produced endpoint
+blobs and diffuse bridges, but progressive changes—core–spread separation, material memory,
+obstacle-conditioned evaluation, threshold sweeps, and a final focus model—improved obstacle-
+aware route formation. The strongest final focus setting reaches hard IoU 0.2066 on a standard
+1
+
+===== PAGE 2 =====
+held-out split and 0.1866 on a harder obstacle split, with obstacle overlap around 0.18 and
+0.15, respectively. These results are not evidence of a solved planner: the learned paths remain
+threshold-sensitive and often fragmentary. They do, however, support a narrower claim that
+phase-field material dynamics can provide an interpretable substrate for partial, obstacle-aware
+latent route formation. The novelty is therefore a systems-level synthesis of known phase-field
+mechanics, latent world models, and energy-based inference, together with an honest empirical
+account of where this substrate currently succeeds and fails.
+1 Introduction
+Modern world models usually perform inference through repeated dense updates of vectors or
+feature maps. That is flexible, but it weakly constrains three properties that matter for world
+modeling:adaptive compute,persistent structural memory, andgeometrically coherent internal
+trajectories.
+This paper proposes a different organizing principle:reasoning as controlled fracture propagation
+in a latent material. Instead of a flat hidden state, PF 2V-WM uses a spatial latent medium
+with tension, damage, anisotropy, and memory. A learned encoder injects forcing and boundary
+information, and a differentiable variational solver relaxes the latent fields toward lower energy. In
+principle, this gives adaptive computation, long-range spatial coupling, and slow path-dependent
+memory within one substrate.
+The proposed model, PF 2V-WM, combines five ingredients:
+•adamage fieldrepresenting commitment or computational expenditure;
+•apotential fieldwhose gradients carry latent stress and directional flow;
+•amemory fieldthat hardens or softens previously used pathways;
+•anisotropic transportthat encodes quad-directional or learned structural bias; and
+•geometric and topological priorsthat favor coherent spiral-like trajectories and short suf-
+ficient fracture paths.
+The goal is not to claim that intelligence literally follows brittle fracture mechanics. The narrower
+claim is that phase-field fracture dynamics can serve as a useful computational substrate for adaptive
+latent inference.
+This draft now includes a long prototype record rather than only a proposal. The empirical story
+is mixed but informative: simple versions often collapse into blobs or broad corridors, whereas
+later material-style variants become more obstacle-selective and the final focus model produces
+the strongest visible route signal. The main open problem is no longer whether the model can
+sense a route, but whether it can harden a faint route-like latent field into a thin, continuous,
+threshold-stable path.
+2 Relation to Prior Work and Novelty Positioning
+PF2V-WM is best understood as asystems-level synthesis. Its individual ingredients are not all new:
+phase-field fracture contributes variational damage dynamics and diffuse crack regularization; world
+2
+
+===== PAGE 3 =====
+models contribute latent dynamics and memory; and energy-based or continuous-depth models
+contribute optimization-based hidden-state evolution. The novelty lies in how these pieces are
+assembled.
+The central reframing is that fracture becomes the latent mechanism of commitment, anisotropy
+becomes a reasoning bias, multiscale phase fields become a hierarchy of abstraction, and slow hard-
+ening becomes memory. This is modestly novel relative to fracture mechanics but more distinctive
+relative to standard latent world models, which usually rely on generic recurrent or transformer-
+style updates.
+Accordingly, PF2V-WM should be presented as a research direction rather than a replacement for
+existing systems. Stronger claims of superiority must be earned empirically, especially on tasks
+where sparse spatial trajectories, adaptive computation, or long-range coherence matter.
+3 Conceptual Overview
+At a high level, PF 2V-WM interprets latent computation through the language of fracture:
+•Reasoningcorresponds to the propagation and stabilization of a fracture front in latent space.
+•Simple inferenceproduces short, sparse, low-energy fracture paths.
+•Complex inferenceinduces richer multiscale branching and therefore more inner solver steps.
+•Commitmentoccurs where the damage field saturates toward one.
+•Memoryis encoded as slow, path-dependent changes in local material properties.
+In this view, adaptive computation emerges from the latent dynamics rather than from a separate
+controller: easy inputs settle quickly, while hard inputs require more propagation and conflict
+resolution.
+4 Latent State and Multiscale Representation
+Let Ωl ⊂R 2 denote the spatial domain at pyramid levell∈ {0, . . . , L−1}, where lowerlindicates
+coarser resolution and higherlindicates finer resolution. At timet, the latent state is
+Xt ={d l(x, t), ϕ l(x, t), m l(x, t)}L−1
+l=0 ,x∈Ω l.(1)
+The fields have the following meanings:
+dl(x, t)∈[0,1] damage or commitment field,(2)
+ϕl(x, t)∈Rpotential or stress field,(3)
+ml(x, t)≥0 memory or hardening field.(4)
+The damage field records where computation has already “spent itself.” The potential field stores
+uncertainty, directional flow, and long-range coupling through its gradient. The memory field
+evolves slowly across episodes and modifies future propagation by changing local toughness or
+stiffness.
+3
+
+===== PAGE 4 =====
+Multiscale structure is essential. Coarse levels represent global constraints and long trajectories,
+while fine levels refine local detail. LetP l andU l denote downsampling and upsampling operators.
+Cross-scale consistency is enforced by coupling neighboring levels through penalties such as∥d l −
+Ul(dl−1)∥2.
+5 Energy-Based Formulation
+Inference is defined as approximate minimization of a total free energy
+E
+
+{dl, ϕl, ml}L−1
+l=0
+
+=
+L−1X
+l=0
+El(dl, ϕl, ml).(5)
+For each scalel, we define
+El =
+Z
+Ωl
+(1−d l)2 ψe
+
+∇ϕl;A l(ml)
+
+dx(6)
++
+Z
+Ωl
+Gl
+c(x, ml)
+ d2
+l
+2ℓl
++ ℓl
+2 ∥∇dl∥2 +W(d l)
+
+dx(7)
++λ align
+Z
+Ωl
+dl ∥∇ϕl −v l
+spiral(x)∥2 dx(8)
++λ TV
+Z
+Ωl
+∥∇dl∥dx+λ cross
+Z
+Ωl
+∥dl −U l(dl−1)∥2 dx,(9)
+with the convention that the cross-scale term is omitted forl= 0.
+5.1 Degraded Anisotropic Elastic Energy
+The first term is the transport or elastic energy modulated by damage. A simple anisotropic form
+is
+ψe
+
+∇ϕl;A l
+
+= 1
+2 ⟨∇ϕl, Al∇ϕl⟩,(10)
+whereA l(ml) is a positive semidefinite stiffness tensor, potentially dependent on memory. The
+prefactor (1−d l)2 ensures that highly damaged regions carry less latent stress.
+A practical QDMN-inspired implementation replaces a dense tensor with directional finite differ-
+ences:
+ψe(∇ϕ) = 1
+2
+X
+k∈{N,S,E,W}
+ak(m)|D kϕ|2,(11)
+whereD k denotes a directional derivative anda k(m)>0 are learned directional stiffnesses. This
+biases propagation toward preferred axes and supports kinks or branches when directional pressures
+conflict.
+5.2 Fracture Surface Energy and Double-Well Potential
+The second term follows the standard phase-field fracture pattern. The toughness fieldG l
+c(x, ml)
+determines how costly it is to create damage, whileℓ l sets the width and smoothness of the diffuse
+4
+
+===== PAGE 5 =====
+crack. We use the double-well potential
+W(d l) =d 2
+l (1−d l)2,(12)
+which softly encourages binary commitment without hard projection.
+5.3 Spiral Alignment Prior
+The third term imposes a geometric preference on active regions. Let the spiral phase be
+s(x) =α θ(x) +βlog
+
+r(x) +ε
+
+,(13)
+where
+r(x) =
+q
+(x−c x)2 + (y−c y)2, θ(x) = atan2(y−c y, x−c x).(14)
+The corresponding normalized vector field is
+vspiral(x) = ∇s(x)
+∥∇s(x)∥+ε .(15)
+This prior encourages coherent long-range trajectories rather than arbitrary diffuse activation.
+5.4 Topological Simplicity Penalty
+The total variation term penalizes unnecessary crack length and acts as an Occam-style prior. It
+discourages degenerate solutions in which the entire domain damages uniformly and instead favors
+the shortest sufficient path that resolves the task.
+6 Memory as Slow Material Hardening
+Memory is modeled as a slow field that accumulates along used trajectories and modulates future
+dynamics. A generic episode-level update is
+mt+1
+l = (1−ρ)m t
+l +η H
+
+dt
+l, ϕt
+l
+
+,(16)
+whereHis a hardening signal, for example
+H(d, ϕ) =σ
+
+αmd+β m∥∇ϕ∥
+
+.(17)
+The memory field can modify the local toughness through either hardening or softening. A hard-
+ening rule takes the form
+Gl
+c(x, ml) =G l
+0
+
+1 +κm l(x)
+
+,(18)
+while a softening rule may use a decreasing function ofm l. The choice should remain conceptually
+consistent throughout an implementation.
+5
+
+===== PAGE 6 =====
+7 Latent Dynamics and Inference
+We interpret inference as gradient flow or variational relaxation on the energy in Equation (9). In
+continuous form, the damage dynamics can be written as
+∂dl
+∂τ =−M d
+δEl
+δdl
+,(19)
+and a quasi-static update for the potential field is given by
+−∇·
+
+(1−d l)2Al(ml)∇ϕl
+
+=f l,(20)
+wheref l is encoder-produced forcing derived from the current observation and action.
+In a practical discrete solver, one unrollsK l inner optimization steps per level:
+ϕ(k+1)
+l =ϕ (k)
+l −η ϕ
+∂E
+∂ϕ(k)
+l
+,(21)
+d(k+1)
+l = Π[0,1]
+ 
+d(k)
+l −η d
+∂E
+∂d(k)
+l
+!
+,(22)
+where Π[0,1] denotes projection or a differentiable bounded parameterization. The number of inner
+iterations serves as a true computational budget: easy inputs converge rapidly, whereas difficult
+inputs require deeper latent relaxation.
+8 Architecture
+A practical PF 2V-WM system contains four main components.
+Encoder.Given observationo t, actiona t, and optionally the previous memory field, a convolu-
+tional encoder or compact U-Net produces the forcing fieldf l, initial conditions forϕ l, optional
+initialization ford l, and boundary-condition parameters.
+Pyramid builder.Multiscale representations are created by repeated downsampling:
+o(l)
+t =P l(ot), a (l)
+t =P l(at).(23)
+These inputs may condition the solver either at all levels or only at the finest level with coarse-to-fine
+propagation.
+Variational solver.For each level, the solver alternates between updatingϕ l, updatingd l, and
+optionally applying a slow memory update. Shared solver parameters may be used across scales to
+reduce complexity, or level-specific parameters may be introduced to increase expressivity.
+Readout head.The final latent fields are decoded into task outputs, such as next observation
+prediction, next latent state, action value, token distribution, or plan score. A simple readout may
+globally pool features extracted fromd L−1 andϕ L−1, while a richer decoder can condition on the
+entire pyramid.
+6
+
+===== PAGE 7 =====
+9 Training Objective
+The total loss combines task performance with energy-based regularization:
+L=L pred +α
+L−1X
+l=0
+El +βL traj +γL simp +δL cross +µL mem.(24)
+Each term plays a distinct role:
+•L pred: task loss for prediction, control, or language modeling;
+• P
+l El: regularizes latent states to follow the intended fracture dynamics;
+•L traj: encourages coherent latent trajectories across time;
+•L simp: penalizes unnecessary total crack length or diffuse activation;
+•L cross: enforces multiscale consistency;
+•L mem: stabilizes memory consolidation over episodes.
+A simple memory-consistency loss is
+Lmem =
+L−1X
+l=0
+mt+1
+l −Update(m t
+l, dt
+l, ϕt
+l)
+2
+2 .(25)
+10 Algorithmic Summary
+The full training loop can be summarized as follows.
+Input:current observationo t, actiona t, previous latent memory{m t
+l}.
+Step 1: Encode.Produce forcing fields, initial potentials, and optional initial damage seeds from
+the observation-action pair.
+Step 2: Build pyramid.Construct multiscale inputs and latent initializations.
+Step 3: Relax the latent medium.For each levelland forK l inner iterations:
+1. update the potential field using the anisotropic transport term;
+2. update the damage field using fracture, alignment, and TV penalties;
+3. exchange information across scales if hierarchical coupling is enabled.
+Step 4: Decode.Read out prediction targets from the final latent fields.
+Step 5: Update memory.Apply the slow hardening rule to obtainm t+1
+l .
+Step 6: Optimize.Backpropagate through the unrolled solver and minimize the total training
+loss.
+7
+
+===== PAGE 8 =====
+11 Experimental Program and Main Findings
+A staged evaluation strategy is critical because the full model introduces several interacting mech-
+anisms. The experiments in this draft should be read as prototype diagnostics rather than as
+a mature benchmark claim. They ask a focused question: can phase-field latent dynamics form
+sparse, obstacle-aware route structure, and how do solver depth, thresholding, memory, and readout
+design affect that structure?
+11.1 Minimal Viable Prototype
+The initial prototype used a single 64×64 latent grid with one damage field, one potential field,
+one anisotropic stiffness mechanism, one spiral alignment prior, one total variation penalty, and one
+task-specific readout head. This setup was sufficient to test whether fracture-style latent inference
+could produce sparse, coherent trajectories in a controlled path-connection task.
+11.2 Observed Experimental Trajectory
+The empirical trajectory was not monotonic. Early start–goal path runs showed decreasing loss but
+mostly produced endpoint activation, diffuse bridges, or broad low-frequency blobs. Sharpening
+the damage field, adding edge losses, and annealing the target width improved local contrast but
+did not by themselves create thin connected paths. Later experiments introduced more structural
+pressure: core–spread separation, obstacle-bending tasks, explicit route metrics, memory probes,
+material-only inference, threshold sweeps, and soft shortest-path controls.
+The most important negative result is that generic overlap and apparent connectivity can be mis-
+leading. The soft-control baseline often produced high connectivity, but much of that connectivity
+came from broad value-field activation that crossed obstacle regions. For this task, a useful route
+model must balance hard IoU, route ratio, obstacle overlap, route gap, and connectivity rather
+than optimizing any single metric.
+11.3 Final Prototype Summary
+The final paper pack identified material-thin PF2V as the best current fracture-style variant before
+the final focus run. In the three-seed robustness check, material-thin with threshold selection
+reached mean hard IoU 0.1244±0.0096 on the standard split with obstacle overlap 0.1780±0.0141,
+while the soft-control thresholded baseline reached hard IoU 0.0500±0.0027 with obstacle overlap
+0.5888±0.0154. This supports the claim that material-style dynamics are more obstacle-selective
+than the broad soft-control solution.
+The final focus run then warm-started from the material-thin model and added stronger core
+commitment, endpoint pressure, centerline supervision, side suppression, and obstacle penalties.
+Its best thresholded standard result reached hard IoU 0.2066, route ratio 0.7165, obstacle overlap
+0.1826, and connectivity 0.0665. On the harder obstacle split, the best thresholded result reached
+hard IoU 0.1866, route ratio 0.7173, obstacle overlap 0.1470, and connectivity 0.0795. These are the
+strongest results in the manuscript, but they remain prototype-level: the outputs are route-aware
+and obstacle-selective, not yet clean binary corridors.
+8
+
+===== PAGE 9 =====
+Setting Hard IoU Route Ratio ObsOverlap Conn.
+material-thin robust std 0.1244±0.0096 0.7946±0.0163 0.1780±0.0141 0.0727±0.0098
+soft-control robust std 0.0500±0.0027 0.9652±0.0051 0.5888±0.0154 1.0395±0.0060
+final focus std 0.2066 0.7165 0.1826 0.0665
+final focus hard 0.1866 0.7173 0.1470 0.0795
+Table 1: Main empirical summary from the final robustness and focus runs. Material-style PF 2V
+variants are more obstacle-selective than soft-control, and the final focus run gives the strongest
+hard-IoU results, but connectivity remains weak and threshold-sensitive.
+11.4 Recommended Next Experiments
+The next experiments should focus less on proving route awareness and more onroute hardening:
+converting faint route-like probability mass into a thin, continuous, threshold-stable path. Useful
+next steps include continuity losses on skeletons or differentiable graph connectivity, learned post-
+solvers that harden only the core path, stronger obstacle penalties applied directly to the final
+prediction, and comparisons against obstacle-conditioned CNN and differentiable-planning baselines
+under identical metrics.
+Key evaluation axes should include predictive accuracy, obstacle overlap, start-to-goal connectivity,
+route gap, threshold sensitivity, number of inner solver steps, spatial sparsity, and interpretability
+of the damage and potential fields.
+12 Scientific Positioning and Claims
+The strongest defensible claims of PF 2V-WM are architectural and algorithmic rather than biolog-
+ical. Specifically, the model suggests that:
+1. variable-depth computation can emerge from a latent variational medium without a separate
+routing controller;
+2. geometric priors such as spiral structure and directional anisotropy can be encoded directly in
+the latent physics;
+3. memory can be represented structurally through material-property updates rather than opaque
+recurrent state alone; and
+4. multiscale fracture dynamics may improve coherence on tasks requiring long-range dependency
+tracking.
+At the same time, the honest novelty claim is limited in scope. PF 2V-WM does not introduce an
+entirely new class of phase-field mathematics; rather, it repurposes and recombines known ingre-
+dients into a new computational interpretation. Its strongest claim is therefore that a multiscale
+phase-field latent medium can serve as an adaptive inference substrate in which fracture propa-
+gation, anisotropy, geometric priors, and hardening jointly implement reasoning. This framing is
+more original than any individual equation viewed in isolation.
+These claims are testable through ablation and comparative experiments. They do not require any
+assertion that natural intelligence literally implements fracture physics. They also do not imply that
+9
+
+===== PAGE 10 =====
+PF2V-WM is already better than established alternatives. Until validated, it should be regarded
+as an interpretable, high-risk, potentially high-reward alternative to standard latent world models
+and hybrid neural–physics systems.
+13 Limitations and Open Questions
+Several challenges remain before this proposal can be considered a mature model class.
+•Optimization difficulty:unrolled variational solvers may be expensive and sensitive to hy-
+perparameters.
+•Discretization choices:stability depends on finite-difference stencils, boundary conditions,
+and the parameterization of bounded damage fields.
+•Interpretability versus flexibility:strong geometric priors can improve structure but may
+overspecialize the model.
+•Benchmark selection:tasks should genuinely reward adaptive internal computation rather
+than merely spatial inductive bias.
+•Current prototype weakness:the final focus model improves hard IoU and obstacle selec-
+tivity, but the visible routes remain threshold-sensitive and often fragmentary rather than clean
+binary corridors.
+•Evaluation mismatch:generic overlap and raw connectivity metrics can overstate progress
+on path tasks, especially when broad value fields cross obstacles; route gap, obstacle overlap,
+and threshold sensitivity must be reported together.
+Future work may investigate implicit differentiation, learned preconditioners, richer anisotropy
+families, partial crack healing, improved path-specific objectives, connectivity-aware losses, and
+extensions to 3D or non-Euclidean latent domains.
+14 Conclusion
+PF2V-WM reframes world modeling as inference in a structured latent material governed by phase-
+field fracture dynamics. The framework replaces a monolithic hidden state with fields for damage,
+potential, and memory, and it embeds geometric and topological biases directly into an energy
+functional. Across the prototype sequence, the idea proves neither trivial nor solved: early models
+mostly formed blobs, while later material-style variants became more obstacle-selective and the
+final focus model achieved the strongest path-overlap results.
+The final empirical conclusion is therefore cautious. PF 2V-WM is not yet a robust planner, and the
+current implementation does not reliably materialize clean connected binary paths. However, the
+final experiments show that material-style phase-field dynamics can encode partial obstacle-aware
+route structure more selectively than a broad soft-control baseline. The next technical bottleneck
+is route hardening: preserving the interpretability and obstacle selectivity of the latent material
+while forcing the route mass to become thin, continuous, and stable under thresholding. If that
+bottleneck can be solved, PF2V-WM may become a useful route toward world models whose internal
+computation is both dynamically adaptive and physically interpretable.
+10
+
+===== PAGE 11 =====
+A Prototype Appendix: Experiment Record and Qualitative Fig-
+ures
+This appendix keeps a compact record of the prototype sequence so the paper preserves the empirical trail,
+not only the final claims.
+A.1 Minimal Prototype Configuration
+The current prototype implements a single-scale PF 2V-WM with the following components:
+•a 64×64 spatial latent grid;
+•one encoder mapping two-channel start/goal observations into an initial potential fieldϕ;
+•one sigmoid-parameterized damage fielddupdated by unrolled variational steps;
+•one quad-directional stiffness parameterization for QDMN-style anisotropy;
+•one spiral-modulated toughness prior;
+•one shallow readout head producing path logits.
+The synthetic task is to infer a path between two marked points. Each training sample contains a start
+marker, a goal marker, and a thickened straight-line target mask. The model is trained with weighted binary
+cross-entropy, Dice loss, and a weak total-variation regularizer on the predicted mask.
+A.2 What We Did
+The first end-to-end run trained for 200 epochs on random path-connection samples with batch size 8 and
+three inner solver steps. The goal was feasibility rather than benchmark performance: does the fracture-style
+latent mechanism learn any path-related structure at all?
+A.3 What We Got
+Table 2 shows decreasing loss but only modest overlap. Soft IoU stays low, so the prediction remains diffuse;
+hard IoU rises late, but likely because thresholding recovers broad overlap rather than a clean centerline.
+Epoch Loss BCE Dice Soft IoU Hard IoU
+1 2.4134 1.3284 0.9103 0.0474 0.0496
+25 2.4586 1.3421 0.9424 0.0299 0.0309
+50 2.4031 1.3146 0.9173 0.0435 0.0453
+75 2.2232 1.1772 0.9002 0.0527 0.0459
+100 2.1132 1.1133 0.8629 0.0739 0.0620
+125 2.0232 1.0278 0.8769 0.0657 0.0440
+150 1.9503 0.9442 0.9073 0.0487 0.0330
+175 2.0552 1.0511 0.8814 0.0635 0.0510
+200 2.2564 1.2707 0.8122 0.1037 0.3310
+Table 2: Checkpoint metrics from the first minimal PF 2V-WM prototype run on the synthetic
+path-connection task.
+11
+
+===== PAGE 12 =====
+The fairest interpretation is cautious: the run showssignal, notsolution. The outputs are structured, but
+still blurry and weakly localized.
+A.4 What We Learn
+Three lessons emerge from this first run.
+1.The concept is alive.The latent mechanism is not inert; it responds to the task and learns nontrivial
+path-related behavior.
+2.The current solver is still weak.The system tends to highlight endpoint neighborhoods more readily
+than it forms a crisp connected path.
+3.Evaluation must match the task.Standard IoU can miss or misread progress on path-structured
+outputs, so connectivity-aware metrics are necessary.
+The next step is therefore to stay at minimal scale, improve the metrics, and compare against a plain CNN
+before adding hierarchy or richer memory.
+A.5 Recommended Next Measurements
+The next runs should report not only overlap scores but also path-aware diagnostics:
+•skeleton IoU;
+•start-to-goal connectivity rate;
+•centerline distance;
+•path precision and path recall;
+•comparison against a plain CNN trained on the same task.
+These measurements better test whether fracture-style latent inference produces connected, parsimonious
+paths rather than diffuse masks.
+A.6 Qualitative Figures from the Current Run
+Figures 1–5 show the dominant failure mode: strong endpoint activations plus a broad background field
+instead of a compact connected path.
+12
+
+===== PAGE 13 =====
+Figure 1: Prototype qualitative result A: prediction remains diffuse and emphasizes endpoint regions
+more strongly than the connecting path.
+Figure 2: Prototype qualitative result B: the model exhibits path-related signal, but the predicted
+field is still broad and weakly structured.
+Figure 3: Prototype qualitative result C: strong endpoint blobs are present, but the connection
+between them is not formed sharply.
+13
+
+===== PAGE 14 =====
+Figure 4: Prototype qualitative result D: the predicted map preserves some task-relevant structure,
+yet remains substantially more diffuse than the target path.
+Figure 5: Prototype qualitative result E: another representative example showing endpoint empha-
+sis and background activation rather than a crisp fracture trajectory.
+14
+
+===== PAGE 15 =====
+B Prototype Appendix: Second Run with Smoothed Inputs and
+Explicit Damage Supervision
+This second appendix entry records a revised minimal prototype in which the input representation, latent
+update rule, and supervision were modified to make the path-formation task easier to learn while still
+preserving the phase-field flavor of the model.
+B.1 What We Changed
+Compared with the first run, the second implementation introduced several practical changes:
+•Gaussian start and goal blobs replaced single-pixel markers;
+•the target path was replaced by a soft corridor mask rather than a binary thickened line;
+•coordinate channels and a signed source-minus-goal charge channel were appended to the input;
+•the damage field received its own learned initialization network;
+•the latent dynamics were updated with explicit hand-crafted drives for bothdandϕrather than differ-
+entiating the full energy with autograd at each inner step;
+•an auxiliary latent binary-cross-entropy term was added so that the damage field itself received direct
+supervision.
+The run used five inner steps and 250 epochs to test whether the latent medium could learn a more useful
+connection pattern.
+B.2 What We Got
+Table 3 shows easier optimization and soft IoU near 0.12 around epoch 200, but unstable hard IoU and weak
+final performance.
+Epoch Loss BCE Latent BCE Dice Soft IoU Hard IoU
+1 2.4696 1.3332 0.5679 0.9236 0.0401 0.0236
+25 2.1794 1.0923 0.4707 0.9468 0.0276 0.2947
+50 2.0384 1.0734 0.3457 0.9033 0.0516 0.1375
+75 1.5163 0.6972 0.2194 0.8309 0.0966 0.1497
+100 1.6299 0.8559 0.1916 0.7988 0.1145 0.1522
+125 1.5659 0.8146 0.1361 0.8190 0.1003 0.1289
+150 1.2898 0.5560 0.0990 0.8297 0.0945 0.1127
+175 1.3958 0.6707 0.1195 0.8008 0.1132 0.1352
+200 1.4055 0.6991 0.1147 0.7817 0.1246 0.1608
+225 1.4574 0.7379 0.1205 0.7929 0.1167 0.1433
+250 1.6001 0.8585 0.1149 0.8256 0.0961 0.0964
+Table 3: Checkpoint metrics from the second PF 2V-WM prototype run with smoothed inputs,
+coordinate channels, and direct latent supervision.
+The result remains mixed. Endpoint localization improves, but the model still learns a connectedregion
+rather than a connectedpath: the prediction is a broad smooth blob rather than a parsimonious fracture
+trajectory.
+15
+
+===== PAGE 16 =====
+B.3 What We Learn from the Second Run
+The lesson is more specific than in run one: the training setup rewards corridor overlap but does not
+penalize over-expansion strongly enough. The latent damage field is informative, but the readout spreads
+that localized signal into an overly broad prediction. The problem is now how to convert coarse connected
+activation into thin path-like commitment.
+B.4 Recommended Next Changes After Run Two
+The next round of experiments should emphasize path-thinning and connectivity control:
+•compare the current model to a plain CNN with the same smoothed inputs;
+•add penalties that discourage broad-area activation relative to centerline activation;
+•report skeleton IoU and connectivity metrics rather than only overlap;
+•test whether reducing spiral influence or readout smoothing improves path sharpness;
+•consider supervising the latent field toward corridor interiors only near the actual path rather than around
+both endpoints.
+B.5 Qualitative Figures from the Second Run
+Figures 6 and 7 show the same pattern visually: localized endpoint damage, but a broad connected blob
+rather than a narrow bridge.
+16
+
+===== PAGE 17 =====
+Figure 6: Second prototype qualitative result A: smoothed inputs and direct latent supervision
+produce a more coherent connected region, but the final prediction is still substantially wider than
+the target corridor. The latent damage field remains mostly concentrated near the endpoints.
+17
+
+===== PAGE 18 =====
+Figure 7: Second prototype qualitative result B: a second representative example showing the same
+overall pattern—localized endpoint damage and a broad, over-smoothed predicted bridge rather
+than a thin path.
+18
+
+===== PAGE 19 =====
+C Prototype Appendix: Third Run with Sharper Commitment
+and Edge Matching
+This third appendix entry records a further attempt to force thinner path formation by sharpening the
+damage commitment, reducing the phase-field length scale, adding directional input channels, and penalizing
+mismatch between predicted and target spatial gradients.
+C.1 What We Changed
+Relative to the second run, the third implementation made the following changes:
+•the input was expanded from five channels to seven by adding global source-to-goal direction components;
+•the target corridor was narrowed by reducing the soft mask width fromσ= 2.0 toσ= 1.5;
+•the phase-field length scale was reduced fromℓ= 0.8 toℓ= 0.45 to encourage sharper structures;
+•the damage field was sharpened by applyingσ(8z d) rather thanσ(z d);
+•the readout head was removed and replaced with a direct sharpened output 8(d−0.5);
+•an edge-matching loss and an explicit commitment regularizer were added to discourage fuzzy interme-
+diate states.
+The goal was to test whether stronger commitment and edge supervision would produce a visibly thinner
+latent bridge.
+C.2 What We Got
+Table 4 shows no stable gain from sharper commitment. Soft IoU peaks near 0.10, hard IoU fluctuates, and
+thin path formation is still not stabilized.
+Epoch Loss BCE Latent BCE Dice Edge Soft IoU Hard IoU
+1 3.7258 2.8149 0.1813 0.9599 0.0047 0.0209 0.0000
+25 2.5008 1.5939 0.1803 0.9532 0.0027 0.0247 0.0501
+50 2.5279 1.5507 0.3293 0.8982 0.0048 0.0548 0.2471
+75 2.0999 1.0446 0.4361 0.8948 0.0059 0.0553 0.2136
+100 2.1301 1.1066 0.4218 0.8688 0.0074 0.0706 0.1803
+125 1.8170 0.8749 0.3296 0.8538 0.0070 0.0794 0.1928
+150 1.4752 0.5060 0.3491 0.8714 0.0052 0.0702 0.1339
+175 1.6154 0.6599 0.3684 0.8385 0.0070 0.0885 0.1189
+200 1.5222 0.6290 0.3095 0.8154 0.0082 0.1026 0.1506
+225 1.6844 0.7605 0.3370 0.8302 0.0080 0.0934 0.1119
+250 1.8150 0.8964 0.3000 0.8584 0.0085 0.0770 0.0851
+275 1.5433 0.6356 0.3101 0.8352 0.0085 0.0913 0.1128
+300 1.4852 0.6027 0.2945 0.8185 0.0079 0.1014 0.1326
+Table 4: Checkpoint metrics from the third PF 2V-WM prototype run with sharper commitment,
+directional channels, and edge matching.
+Qualitatively, the prediction and latent damage field still collapse into a broad merged activation with a
+large halo. Sharper commitment intensifies local peaks, but does not enforce path sparsity.
+19
+
+===== PAGE 20 =====
+C.3 What We Learn from the Third Run
+The third run shows that sharper latent fields are not automatically more path-like. In the current formu-
+lation, stronger commitment mainly creates brighter blobs around driven regions, so the bottleneck is not
+just insufficient sharpness but insufficientstructural guidancetoward one-dimensional connectivity.
+C.4 Recommended Next Changes After Run Three
+The next round of experiments should focus on structural rather than purely local sharpening:
+•add a baseline comparison against a conventional CNN with the same seven-channel input;
+•measure skeleton overlap and connectivity rather than relying on corridor IoU alone;
+•try losses that penalize area while preserving connectivity, so blobs become less attractive than thin
+paths;
+•test whether the latent field should model only centerline commitment while a separate decoder handles
+corridor width;
+•consider removing or weakening global smoothing terms that may be encouraging the large activation
+halo.
+C.5 Qualitative Figure from the Third Run
+Figure 8 shows the same conclusion visually: sharper commitment increases local contrast, but not thin path
+formation.
+20
+
+===== PAGE 21 =====
+Figure 8: Third prototype qualitative result: sharper commitment and edge matching increase local
+contrast, but the output still expands into a broad merged blob rather than a thin connected path.
+21
+
+===== PAGE 22 =====
+D Prototype Appendix: Fourth Run with Annealed Commitment
+and Target Curriculum
+This fourth appendix entry records an annealed training schedule designed to transition the model from
+coarse connected-region learning toward sharper path commitment over the course of optimization. The
+central idea was to begin with a wider target corridor and softer latent commitment, then gradually shrink
+both the target width and the effective crack scale while increasing the sharpness of the damage field.
+D.1 What We Changed
+Relative to the third run, the fourth implementation introduced a curriculum in both the target generation
+and the latent solver:
+•the target corridor width was annealed during training, starting broader and ending narrower;
+•the damage commitment scale increased gradually from soft to sharp over training epochs;
+•the effective phase-field length scale decreased over time, encouraging narrower structures later in opti-
+mization;
+•a shallow readout head was reintroduced on top of the latent state to supplement the sharpened damage-
+based logits;
+•an additional Laplacian matching term and an outside-region suppression term were added to discourage
+diffuse predictions away from the target.
+This run tested whether curriculum-based optimization could learn coarse connectivity first and thin struc-
+ture later.
+D.2 What We Got
+Table 5 shows a mixed but useful result: hard IoU peaks near 0.33 around epoch 75, and soft IoU briefly
+reaches the 0.10–0.12 range, but the gains are not sustained.
+Qualitatively, the same failure mode remains: the latent damage field is more localized than the prediction,
+but the final output is still a wide merged region with a large halo. The curriculum helps the model pass
+through better intermediate states, but does not preserve them.
+D.3 What We Learn from the Fourth Run
+The fourth run strengthens a useful conclusion: training strategy matters, but scheduling alone is not enough.
+Annealing improves the optimization trajectory, yet the model still relaxes toward region-filling solutions
+rather than one-dimensional fracture paths. The encouraging part is that better states appear transiently;
+the discouraging part is that they do not persist.
+D.4 Recommended Next Changes After Run Four
+The next experiments should focus on preserving good intermediate states and enforcing topology:
+•save and compare the best checkpoint by a path-aware validation metric rather than using the final epoch
+by default;
+22
+
+===== PAGE 23 =====
+Epoch Loss BCE Latent BCE Dice Edge Lap Soft IoU Hard IoU
+1 2.4790 1.3917 0.5538 0.9039 0.0033 0.0110 0.0514 0.0481
+25 2.4253 1.3336 0.5359 0.9283 0.0021 0.0082 0.0375 0.2884
+50 2.2446 1.1613 0.5565 0.8917 0.0030 0.0062 0.0580 0.2992
+75 1.9689 0.9762 0.4773 0.8595 0.0028 0.0045 0.0763 0.3250
+100 1.9066 0.9720 0.4387 0.8232 0.0040 0.0039 0.0985 0.2000
+125 1.7652 0.9492 0.3068 0.8058 0.0054 0.0074 0.1082 0.2464
+150 1.3846 0.5971 0.2527 0.8189 0.0058 0.0083 0.1012 0.1449
+175 1.4177 0.6832 0.1999 0.7921 0.0075 0.0094 0.1196 0.1712
+200 1.3479 0.6436 0.1578 0.7922 0.0080 0.0106 0.1184 0.1719
+225 1.4626 0.7597 0.1349 0.8126 0.0079 0.0099 0.1036 0.1287
+250 1.5199 0.8064 0.1139 0.8520 0.0075 0.0103 0.0803 0.0731
+275 1.3080 0.6144 0.0982 0.8389 0.0074 0.0100 0.0898 0.1061
+300 1.2771 0.5945 0.0932 0.8321 0.0073 0.0102 0.0939 0.1226
+Table 5: Checkpoint metrics from the fourth PF2V-WM prototype run with annealed commitment,
+curriculum target width, Laplacian matching, and outside-region suppression.
+•measure connectivity and skeleton quality at every checkpoint to see whether useful solutions appear
+transiently;
+•explore losses that penalize area more aggressively while preserving connectedness;
+•separate centerline prediction from corridor-thickness prediction so the latent field is not forced to rep-
+resent both at once;
+•compare against a conventional CNN trained with the same curriculum to determine whether the cur-
+riculum benefit is specific to PF 2V-WM.
+D.5 Qualitative Figure from the Fourth Run
+Figure 9 shows the same pattern: the target corridor is compact, but the prediction remains broad and
+over-smoothed, with a latent field that is somewhat more localized than the final output.
+23
+
+===== PAGE 24 =====
+Figure 9: Fourth prototype qualitative result: annealed commitment and target curriculum improve
+training behavior but still lead to a broad predicted bridge with a large halo, rather than a thin
+persistent path.
+24
+
+===== PAGE 25 =====
+E Prototype Appendix: Fifth Run with No Observation Bypass
+and Diagnostic Tracking
+This fifth appendix entry records a run designed to test whether the model was relying too heavily on direct
+observation shortcuts rather than the latent fracture state. The main architectural change was to remove the
+observation bypass from the readout head, forcing the final prediction to depend only on the latent damage
+fielddand latent potential fieldϕ. In addition, this run logged several diagnostic quantities intended to
+distinguish thin-path behavior from broad blob formation.
+E.1 What We Changed
+Relative to the fourth run, the fifth implementation introduced two important changes.
+•The readout head was restricted to latent state only: it received [d, ϕ] as input rather than concatenating
+the raw observation channels.
+•Several extra diagnostics were tracked during training, including predicted mass, sharpness, connectivity,
+source and goal hit rates, fracture energy, latent flow energy, compactness, and a blob score defined as
+predicted mass divided by fracture energy.
+The goal was to test whether removing the observation shortcut would force more information through the
+latent dynamics.
+E.2 What We Got
+Table 6 remains mixed. Hard IoU briefly reaches about 0.48 at epoch 25, but later settles back into the earlier
+regime; soft IoU peaks near 0.12 and then drifts down again. Removing the observation bypass changes the
+training dynamics, but not the blob failure mode.
+Epoch Loss BCE Latent BCE Dice Edge Lap Soft IoU Hard IoU
+1 2.1463 1.3937 0.5541 0.9036 0.0033 0.0108 0.0515 0.0510
+25 1.9800 1.2143 0.5533 0.9194 0.0018 0.0085 0.0427 0.4822
+50 1.7338 1.0056 0.5581 0.8650 0.0036 0.0074 0.0735 0.2862
+75 1.5425 0.8757 0.4587 0.8153 0.0052 0.0078 0.1025 0.2840
+100 1.5930 0.9467 0.4467 0.7907 0.0079 0.0104 0.1171 0.2465
+125 1.5168 0.8722 0.3914 0.8048 0.0082 0.0121 0.1080 0.2359
+150 1.2503 0.5908 0.3960 0.8267 0.0060 0.0075 0.0964 0.1528
+175 1.3177 0.6725 0.4125 0.8003 0.0075 0.0087 0.1123 0.1627
+200 1.2725 0.6392 0.3856 0.7922 0.0081 0.0096 0.1173 0.1629
+225 1.4014 0.7587 0.3860 0.8065 0.0082 0.0089 0.1081 0.1388
+250 1.5570 0.8921 0.3447 0.8486 0.0082 0.0098 0.0820 0.0823
+275 1.3009 0.6402 0.3513 0.8388 0.0079 0.0084 0.0893 0.1096
+300 1.2574 0.6042 0.3423 0.8322 0.0074 0.0073 0.0932 0.1266
+Table 6: Checkpoint metrics from the fifth PF 2V-WM prototype run with no observation bypass
+and expanded diagnostics.
+The extra diagnostics clarify the failure mode. Source and goal hit rates stay very high, but predicted mass
+remains too large, compactness stays low, and the blob score stays high. The model is therefore learning
+25
+
+===== PAGE 26 =====
+confident endpoint emphasis, not a thin connecting structure.
+For the final sampled case, the run reported soft IoU 0.0488, hard IoU 0.0626, mass 0.1852, sharpness
+0.0924, connectivity 0.2319, fracture energy 0.002073, blob score 89.3259, source prediction 0.9959, and goal
+prediction 0.9710, again indicating strong endpoint confidence with globally diffuse activation.
+E.3 What We Learn from the Fifth Run
+This run confirms that the blob behavior is not caused only by a trivial observation shortcut. Even with a
+latent-only readout, the model still produces broad merged regions rather than thin bridges. The diagnostics
+also clarifyhowit fails: high endpoint confidence, high activation mass, weak compactness, and low fracture
+energy relative to predicted area.
+E.4 Recommended Next Changes After Run Five
+The next experiments should target the specific diagnostic failure mode revealed here:
+•penalize excess activated area directly, since mass remains far above target mass;
+•reward compact connected centerlines rather than broad endpoint-centered regions;
+•use validation metrics based on compactness, skeleton overlap, and source-to-goal connectivity instead
+of IoU alone;
+•investigate whether fracture energy can be tied more strongly to spatial sparsity so that large halos
+become energetically unfavorable;
+•compare the same diagnostics against a plain CNN baseline to determine which failure modes are specific
+to PF2V-WM and which are task-driven.
+E.5 Qualitative Figure from the Fifth Run
+Figure 10 confirms the same point visually: removing the observation shortcut does not by itself solve the
+blob problem.
+26
+
+===== PAGE 27 =====
+Figure 10: Fifth prototype qualitative result: even without direct observation bypass into the
+readout head, the model still produces a broad endpoint-dominated activation pattern rather than
+a thin path.
+27
+
+===== PAGE 28 =====
+F Prototype Appendix: Sixth Run with Explicit Baseline Com-
+parison
+This sixth appendix entry records the first direct comparison between PF 2V-WM and a plain convolutional
+baseline trained on the same synthetic corridor task with the same seven-channel input representation. The
+purpose of this run was not only to improve PF 2V-WM in isolation, but to determine whether its structured
+latent dynamics produce a measurable advantage over a simpler CNN when both models are trained under
+comparable conditions.
+F.1 What We Changed
+Relative to the earlier single-model runs, this experiment introduced an explicit baseline protocol:
+•PF 2V-WM was trained with the same no-bypass latent architecture as in the previous run;
+•a plain CNN baseline with standard convolutional layers and no latent fracture dynamics was trained on
+the identical task;
+•both models used the same curriculum on target width and were evaluated on a hold-out batch with
+common diagnostics;
+•a shared comparison table was reported with soft IoU, hard IoU, mass, sharpness, connectivity, endpoint
+hit rates, and compactness.
+This is an important methodological step because it changes the question from “does PF 2V-WM learn
+anything at all?” to “does PF 2V-WM learn something meaningfully different from a standard CNN?”
+F.2 What We Got
+Table 7 summarizes the final hold-out comparison. The picture is mixed. PF 2V-WM achieved slightly
+better hard IoU and substantially better compactness, while the plain CNN achieved slightly better soft
+IoU, lower mass, lower sharpness, and much higher connectivity under the crude thresholded connectivity
+proxy. In other words, PF 2V-WM appears more selective, while the CNN appears smoother and more
+spatially connected, albeit often in a broadly activated sense.
+Model Soft Hard Mass Sharp Conn. Src. Goal Compact
+PF2V-WM 0.0655 0.1575 0.2366 0.1428 0.1311 0.9983 0.9684 0.3111
+CNN baseline 0.0664 0.0714 0.2061 0.0915 0.3563 0.9767 0.9865 0.1017
+Table 7: Final hold-out comparison between PF2V-WM and a plain CNN baseline on the synthetic
+corridor task. Higher is better for IoU, connectivity, endpoint hits, and compactness; lower is better
+for excess mass and sharpness-related fuzziness.
+The PF 2V latent report is also informative. For this run, the final evaluation reported latent mass 0.2977,
+fracture energy 0.003643, and latent flow energy 0.317682. These values indicate that the PF 2V latent state
+is active and structured, but still not sparse enough to produce a thin fracture-like path. The qualitative
+output confirms this: the model forms a broad field with strong endpoint activations and a swirling interior
+pattern rather than a narrow bridge.
+28
+
+===== PAGE 29 =====
+F.3 What We Learn from the Sixth Run
+This comparison is valuable because it reveals that PF 2V-WM is no longer merely failing in the same way
+as a generic CNN. The two models fail differently. The CNN is more connected in a thresholded sense, but
+also much less compact. PF 2V-WM is more compact and slightly better in hard overlap, but still too diffuse
+to claim a true path-forming advantage.
+The most honest interpretation is therefore not a performance win, but a research finding. A fair summary is:
+PF2V-WM can produce more compact and threshold-stable latent paths than a plain CNN, but it does not
+yet outperform the CNN on overall path quality. That is a stronger scientific position than before because
+it suggests that PF 2V-WM may already be imposing a different inductive bias, even if that bias is not yet
+the right one. The key open question is therefore whether the model’s relative strength in compactness can
+be turned into actual centerline accuracy and reliable source-to-goal connectivity.
+F.4 Recommended Next Changes After Run Six
+The next experiments should build directly on this baseline comparison:
+•keep the CNN baseline in every future experiment so improvements can be interpreted comparatively
+rather than in isolation;
+•replace the current connectivity proxy with a stricter source-to-goal path test, since broad activation can
+inflate naive connectivity scores;
+•investigate whether PF 2V-WM’s compactness advantage can be amplified without sacrificing endpoint
+coverage;
+•report best-checkpoint rather than final-checkpoint comparisons, since PF 2V-WM may transiently out-
+perform the CNN more clearly mid-training;
+•add skeleton overlap and centerline distance so the comparison is aligned with the real geometric objective.
+F.5 Qualitative Figure from the Sixth Run
+Figure 11 shows a representative PF 2V-WM output from the comparison run. The target corridor is a thin
+nearly vertical path, but the prediction remains a broad field with strong endpoint activations and a diffuse
+internal structure. The latent damage field closely mirrors this behavior, suggesting that the problem is still
+primarily within the latent dynamics rather than solely in the readout head.
+29
+
+===== PAGE 30 =====
+Figure 11: Sixth prototype qualitative result: in the first PF 2V-vs-CNN comparison, PF 2V-WM
+produces a more compact but still highly diffuse latent pattern rather than a thin centerline path.
+30
+
+===== PAGE 31 =====
+G Prototype Appendix: Seventh Run with Explicit Path Losses
+This seventh appendix entry records an attempt to directly optimize source-to-goal continuity by adding
+explicit path losses along the straight segment between the start and goal markers.
+G.1 What We Changed
+Relative to the sixth run, the seventh implementation introduced an explicitly path-focused training objec-
+tive:
+•the batch generator now also returned normalized source and goal coordinates for direct geometric su-
+pervision;
+•centerline samples were taken along the source-to-goal segment;
+•side samples were taken on small perpendicular offsets from that segment;
+•a centerline encouragement term, side suppression term, and explicit gap penalty were added to the loss;
+•the path-related weights were annealed upward during training so that continuity constraints became
+stronger later in optimization.
+The motivation was to reward the model for filling in the path itself rather than merely highlighting endpoints
+and surrounding area.
+G.2 What We Got
+The results are mixed. The strongest gain is that the final sampled diagnostics reportline gap = 0.0000,
+with line mean 0.8284 and line minimum 0.6341, so the centerline is now continuously active. The cost
+is width: offline activation remains extremely high, showing that the model activates a large surrounding
+neighborhood as well as the path.
+Table 8 shows the same tradeoff: connectivity and line coverage improve, but compactness remains poor and
+hard IoU does not become a stable win.
+Epoch Soft Hard Mass Sharp Conn. Compact LineMean LineGap
+1 0.0411 0.0544 0.3155 0.2130 0.0023 20.6290 0.3588 0.9089
+25 0.0342 0.4688 0.2941 0.2039 0.0152 2.4503 0.5366 0.5495
+50 0.0533 0.2339 0.3768 0.2225 0.0738 0.7461 0.6412 0.5000
+75 0.0626 0.2481 0.2905 0.1896 0.0630 0.8221 0.6009 0.5339
+100 0.0691 0.2070 0.2836 0.1835 0.0654 0.9457 0.5410 0.6198
+125 0.0600 0.2117 0.2205 0.1507 0.0589 0.6834 0.5775 0.5130
+150 0.0516 0.1283 0.2403 0.1518 0.1633 0.1833 0.7489 0.1901
+175 0.0634 0.1024 0.2818 0.1496 0.3833 0.1187 0.7717 0.0964
+200 0.0649 0.1258 0.2285 0.1314 0.2743 0.1510 0.6677 0.1927
+Table 8: Representative checkpoints from the seventh PF 2V-WM prototype run with explicit path
+losses.
+For the final sampled case, the run reported soft IoU 0.0895, hard IoU 0.1442, mass 0.2545, sharpness 0.1337,
+connectivity 0.3537, compactness 0.1442, line mean 0.8284, line minimum 0.6341, line gap 0.0000, source hit
+0.9237, goal hit 0.9560, offline mean 0.7722, and offline max 0.9367. These numbers strongly support the
+qualitative impression that the bridge is no longer broken, but is still too thick and blob-like.
+31
+
+===== PAGE 32 =====
+G.3 What We Learn from the Seventh Run
+The key lesson is simple: explicit path losses can fix the broken-bridge problem, but they do not yet produce
+a crack-like path. The model learns continuity, not sparsity. This is a mixed result, best presented as a
+research finding rather than a win.
+G.4 Recommended Next Changes After Run Seven
+The next experiments should explicitly address the new tradeoff exposed here:
+•keep the path losses, since they appear to eliminate outright centerline gaps;
+•add stronger penalties for off-line activation so the learned path cannot simply widen into a corridor-sized
+blob;
+•evaluate source-to-goal success together with compactness and off-line suppression, rather than IoU alone;
+•report the CNN baseline under the same path metrics so the comparison remains honest;
+•frame the result in the paper as a partial success: continuity improved, crack-like sparsity did not.
+G.5 Qualitative Figure from the Seventh Run
+Figure 12 makes the tradeoff obvious: the bridge is no longer broken, but it is still too wide.
+32
+
+===== PAGE 33 =====
+Figure 12: Seventh prototype qualitative result: explicit path losses eliminate the broken bridge,
+but the resulting activation remains too wide and blob-like to count as a clean fracture path.
+33
+
+===== PAGE 34 =====
+H Prototype Appendix: Eighth Run Stress Sweep and Control
+Analysis
+This eighth appendix entry asks a different question: which parameters actually control the qualitative
+behavior of the trained PF 2V-WM system?
+H.1 What We Changed
+Relative to the seventh run, the new experiment was not primarily a new architecture but a controlled
+post-training stress sweep:
+•one PF 2V-WM model with explicit path losses was trained once;
+•a single held-out source-to-goal example was fixed for all evaluations;
+•the model was re-evaluated under multiple settings of commitment scale, phase-field length scaleℓ, spiral
+bias strength, QDMN stiffness scaling, bridge forcing, directional forcing,ϕ-drive strength, and readout
+scale;
+•the same numerical diagnostics were reported for every setting, including hard IoU, connectivity, com-
+pactness, centerline gap rate, off-line activation, and line-to-offline ratio;
+•the goal was interpretability rather than leaderboard improvement: identify the parameters that genuinely
+govern the sharpness–connectivity tradeoff.
+The sweep is useful because it distinguishes whether behavior is driven by the intended geometric priors or
+by a smaller set of blunt phase-field parameters. It strongly supports the second interpretation.
+H.2 What We Got
+The main result is clear: the phase-field length scale parameter is currently the dominant control knob. Low
+ℓproduces a thinner but fragmented trace, while highℓproduces a highly connected but extremely wide
+tube. In contrast, spiral-bias and QDMN scaling changes had almost no measurable effect on the held-out
+sample. Bridge, directional, and readout changes produced moderate shifts, but they were secondary relative
+to the width parameter.
+Table 9 summarizes representative settings from the sweep. The table makes the tradeoff explicit. The setting
+low l sharpgave the best hard IoU in the sweep, but it did so by collapsing the active region so aggressively
+that the line gap rose to 0.8958 and connectivity fell to 0.0020. At the other extreme,high l wideachieved
+perfect sampled centerline continuity with line gap 0.0000, but its off-line activation rose to 0.9705 and
+compactness fell to 0.0320, revealing a nearly uniform blob rather than a narrow fracture path.
+Some metrics require careful interpretation. The compactness value forlow l sharpbecomes artificially
+large because the predicted active set is extremely small, so the target area divided by active prediction
+area is not a reliable measure of geometric success in that corner case. The more informative pattern is
+the joint behavior of line gap, connectivity, and off-line activation: a good fracture path should keep line
+gap low without driving off-line activation close to one. None of the swept settings achieves that balance
+convincingly.
+For the base configuration, the final single-sample diagnostics were soft IoU 0.0480, hard IoU 0.0631, mass
+0.4378, sharpness 0.1941, connectivity 0.8596, compactness 0.0714, line mean 0.6445, line minimum 0.4558,
+line gap 0.1250, offline mean 0.5876, offline max 0.8485, line ratio 1.0967, source hit 0.8915, and goal hit
+0.8934. This profile is exactly the kind of mixed result that the visual example suggests: the model finds
+the rough corridor and often links the endpoints, but it activates too much of the surrounding area to count
+as a clean crack-like route.
+34
+
+===== PAGE 35 =====
+Setting Hard Mass Conn. Compact LineMean LineGap OffMean Ratio
+base 0.0631 0.4378 0.8596 0.0714 0.6445 0.1250 0.5876 1.0967
+low l sharp 0.0703 0.1128 0.0020 14.2222 0.2027 0.8958 0.1322 1.5328
+high l wide 0.0320 0.9046 1.9492 0.0320 0.9728 0.0000 0.9705 1.0024
+no spiral 0.0657 0.4321 0.8336 0.0736 0.6430 0.1250 0.5847 1.0997
+no qdmn 0.0631 0.4378 0.8596 0.0714 0.6444 0.1250 0.5875 1.0968
+strong dir 0.0497 0.5691 1.2478 0.0497 0.7727 0.0000 0.7372 1.0482
+weak phi drive 0.0613 0.4245 0.8090 0.0758 0.6124 0.1667 0.5405 1.1330
+weak readout 0.0606 0.3995 0.7225 0.0844 0.6012 0.2500 0.5401 1.1132
+Table 9: Representative results from the eighth-run stress sweep on a single held-out sample. The
+dominant trend is the sharpness–connectivity tradeoff controlled by the phase-field length scaleℓ.
+H.3 What We Learn from the Eighth Run
+This run clarifies the current scientific status of PF 2V-WM more sharply than the earlier appendix entries.
+The model is controllable, but not yet solving the task cleanly. Its outputs respond in a systematic way to
+internal settings, which is valuable evidence that the latent dynamics are real rather than arbitrary. However,
+the sweep also shows that the dominant behavior is still governed by the diffuse phase-field width parameter,
+not by the more ambitious geometric priors.
+The most honest interpretation is therefore that PF 2V-WM currently behaves more like a physics-shaped
+blob generator than a true sparse path reasoner. It can be pushed toward sharper but broken traces, or
+toward continuous but blurry tubes, yet it does not robustly discover a narrow and reliable source-to-goal
+fracture. In particular:
+•lowℓsharpens the prediction but tends to break continuity;
+•highℓrestores continuity but causes the path to thicken into a blob-like corridor;
+•spiral and QDMN changes currently have only weak effect, suggesting that these priors are not yet strong
+enough to dominate the learned dynamics;
+•bridge, directional, and readout changes matter somewhat, but they do not overturn the main width-
+controlled tradeoff.
+This is not a failure; it is a useful research finding. It means the model exhibits controllable latent path
+formation, but its behavior is still dominated by the phase-field length scale, which creates a sharpness–
+connectivity tradeoff that the present priors do not yet resolve.
+H.4 Recommended Next Changes After Run Eight
+The next experiments should target the dominance of the width parameter directly:
+•redesign the geometric priors so they compete more strongly with the raw smoothing effect ofℓ;
+•replace the current compactness proxy with a bounded measure that does not become misleading when
+the predicted active set is tiny;
+•evaluate the same sweep across many held-out samples so the observed control structure is not tied to
+one example;
+•test losses that penalize off-line activation more aggressively than simple side sampling;
+•report the result in the paper as evidence of controllable but not yet sufficient fracture-style reasoning.
+35
+
+===== PAGE 36 =====
+H.5 Qualitative Figure from the Eighth Run
+Figure 13 shows the representative base-configuration output used for the stress-sweep analysis. The predic-
+tion and latent damage field are visibly structured and clearly non-random, but the activated region remains
+much wider than the desired centerline. The figure is therefore consistent with the numerical diagnosis: the
+system is responsive and interpretable, but still too diffuse.
+Figure 13: Eighth prototype qualitative result from the stress-sweep base configuration: PF2V-WM
+shows controllable source-to-goal path formation, but the activated region remains too broad for a
+clean crack-like path.
+I Prototype Appendix: Ninth Run with Core–Width Separation
+This ninth appendix entry tests a more structured hypothesis: the model may work better if it predicts a
+thin latentcorepath and a widercorridorseparately, instead of asking one field to represent both geometry
+and width at once.
+36
+
+===== PAGE 37 =====
+I.1 What We Changed
+Relative to the eighth run, this experiment explicitly split path formation into two coupled components:
+•a narrow core target and a wider corridor target were generated for every sample;
+•the model used separate latent initializations and updates for a core field and a spread field;
+•the final prediction was formed from the interaction of these two components rather than from one path
+mask alone;
+•losses encouraged a strong centerline core, suppressed off-line activation, and penalized excess spread
+outside the corridor;
+•the same stress-sweep protocol was then applied to test which knobs controlled the resulting behavior.
+The motivation was straightforward: earlier runs suggested that PF 2V-WM could often choose the right
+route but not the right width, so this run tried to separate those two responsibilities.
+I.2 What We Got
+The result is the strongest appendix outcome so far, but still not a full solution. The base configuration
+achieved soft IoU 0.0693, hard IoU 0.4194, mass 0.0904, sharpness 0.0692, connectivity 0.0260, compactness
+0.4194, line mean 0.9764, line minimum 0.9535, line gap 0.0000, offline mean 0.7074, offline max 0.7954, and
+line ratio 1.3803. The latent core diagnostics were also strong: core line mean 0.9562, core line gap 0.0000,
+and core line ratio 1.0951. Compared with earlier runs, this is a major improvement in centerline continuity
+and thresholded overlap while keeping total mass much lower.
+Table 10 summarizes representative stress-sweep settings. The most important pattern is that the old width
+tradeoff still exists, but the split formulation improves control. The settinglow l sharpproduced the
+strongest hard IoU at 0.6923 and the highest line ratio at 4.5612, but also very low connectivity proxy and
+an inflated compactness score caused by an extremely small active set. The opposite extreme,high l wide,
+again produced a very broad connected field with connectivity 0.6597 and hard IoU only 0.0189. The base
+setting is therefore more balanced than either extreme: it preserves perfect sampled centerline continuity
+while avoiding the most severe width collapse.
+Setting Hard Mass Conn. Compact LineMean LineGap OffMean Ratio
+base 0.4194 0.0904 0.0260 0.4194 0.9764 0.0000 0.7074 1.3803
+high core 0.4727 0.0696 0.0226 0.4727 0.9814 0.0000 0.6906 1.4210
+low spread 0.4561 0.0969 0.0238 0.4561 0.9596 0.0000 0.6432 1.4920
+low l sharp 0.6923 0.0415 0.0060 1.4444 0.7323 0.0000 0.1606 4.5612
+high l wide 0.0189 0.3629 0.6597 0.0189 0.9888 0.0000 0.9713 1.0180
+no spiral 0.4643 0.0893 0.0231 0.4643 0.9718 0.0000 0.6484 1.4988
+weak phi 0.6410 0.0827 0.0149 0.6842 0.9086 0.0000 0.3553 2.5570
+high penalty 0.4483 0.0837 0.0241 0.4483 0.9714 0.0000 0.6574 1.4775
+Table 10: Representative results from the ninth-run core–width separation sweep on one held-out
+sample. The split formulation substantially improves centerline continuity and hard overlap, but
+the phase-field length scale still controls the main sharpness–width tradeoff.
+A second useful detail is that the geometric priors still matter less than hoped. Spiral and QDMN changes
+remain relatively weak compared with the effects ofℓ, readout strength, and spread penalties. Even so, the
+split design clearly improves the model’s baseline regime: unlike earlier runs, the base setting already attains
+zero sampled line gap for both the final prediction and the latent core.
+37
+
+===== PAGE 38 =====
+I.3 What We Learn from the Ninth Run
+This run is the clearest evidence so far that the earlier failure was partly representational. Asking one field
+to encode both path centerline and corridor width made the problem harder. Once those roles are separated,
+PF2V-WM becomes much better at maintaining a continuous, thin core while keeping the final corridor
+prediction more controlled.
+The most honest interpretation is still mixed, but noticeably more positive than before. The split model is
+not yet a fully satisfactory fracture path learner because the width tradeoff remains, the connectivity proxy
+is still crude, and the best settings can become artificially sparse. But this run does show a meaningful
+architectural gain: PF 2V-WM can learn a strong centerline mechanism when core formation and width
+expansion are treated as distinct latent tasks.
+In short, the current scientific statement can now be sharpened: PF 2V-WM appears to work better when
+pathroutingand paththicknessare decoupled. That is a useful research finding because it points to a
+concrete design principle for future versions.
+I.4 Recommended Next Changes After Run Nine
+The next experiments should build directly on this split formulation:
+•keep separate core and width variables, since this is the first run with clearly improved baseline behavior;
+•replace the current compactness proxy with a bounded metric, because extremely sparse predictions can
+still make it misleadingly large;
+•evaluate the split model across many held-out samples rather than one representative case;
+•compare the split PF 2V-WM directly against a split-head CNN baseline under the same metrics;
+•strengthen the geometric priors further so thatℓis no longer the dominant control knob.
+I.5 Qualitative Figure from the Ninth Run
+Figure 14 shows the representative base-configuration output from the core–width separation run. The pre-
+diction is visibly tighter than in earlier appendix figures, and the latent core path forms a narrow continuous
+route between source and goal. The remaining weakness is that the final corridor is still wider than ideal,
+but this is the first appendix run in which the centerline mechanism looks consistently clean.
+38
+
+===== PAGE 39 =====
+Figure 14: Ninth prototype qualitative result: separating latent core formation from corridor width
+produces a much cleaner continuous centerline, although the final corridor remains somewhat wider
+than ideal.
+39
+
+===== PAGE 40 =====
+J Prototype Appendix: Tenth Run with Obstacle-Bending Stress
+Test
+This tenth appendix entry tests whether PF2V-WM can do more than connect endpoints in open space. The
+task now includes an obstacle field placed near the straight source-to-goal line, and the target route bends
+around that obstacle through a waypoint. The scientific question is whether the model merely draws a blob
+between endpoints or actually prefers the bent route over the tempting straight line.
+J.1 What We Changed
+Relative to the ninth run, the new experiment adds explicit route-bending structure:
+•the input was expanded with an obstacle channel, producing an eight-channel observation;
+•the target was no longer a straight corridor, but a two-segment route from source to waypoint to goal;
+•a Gaussian obstacle mask was placed near the midpoint of the direct source-to-goal path;
+•the model kept the split core–spread design, but added obstacle repulsion terms to both core and spread
+updates;
+•the loss included a direct obstacle-overlap penalty and a penalty on the straight-line route so that the
+model was rewarded for bending around the obstacle rather than cutting through it.
+The sweep then varied obstacle push, length scale, core and spread gains, readout strength, and other control
+knobs to test when the system preferred the bent route and when it collapsed back toward the straight-line
+shortcut.
+J.2 What We Got
+This is the first run where the numerical diagnostics clearly suggest route planning rather than simple corridor
+filling. In the base setting, the model achieved soft IoU 0.1224, hard IoU 0.1941, mass 0.0933, sharpness
+0.0548, connectivity 0.1133, route mean 0.7234, direct mean 0.7087, route ratio 1.0208, route gap 0.1042,
+and obstacle overlap 0.5805. The latent core was especially encouraging: core route mean 0.9129, core route
+gap 0.0000, and core route ratio 1.0044. The key fact is that route ratio exceeds one, meaning the model
+slightly prefers the bent route over the direct line, while the latent core remains fully connected along the
+obstacle-avoiding path.
+Table 11 summarizes representative sweep settings. Several trends stand out. Removing the obstacle input
+collapses route preference:no obstacle inputdrops route ratio to 0.4940, which is strong evidence that
+the obstacle channel is genuinely affecting behavior. Increasing obstacle push helps route preference and
+lowers obstacle overlap, as seen instrong obstaclewith route ratio 1.1164 and obstacle overlap 0.4539.
+By contrast, lowℓagain drives the model toward sparse but brittle behavior:low l sharpreduces obstacle
+overlap strongly to 0.1625, but route ratio falls to 0.7411 and route gap rises to 0.8542. The result is therefore
+promising but incomplete: the model now understandsgo around, but it does not yet do so cleanly.
+Two caveats are important. First, the straight-line temptation remains strong: several settings still keep
+direct-line activation nearly as high as route activation. Second, obstacle overlap is still substantial even in
+the better settings, so the learned path bleeds into the obstacle rather than avoiding it crisply. The best
+interpretation is therefore not that obstacle avoidance is solved, but that the model has crossed a useful
+threshold: it is no longer only drawing a generic bridge, and is beginning to represent route choice.
+40
+
+===== PAGE 41 =====
+Setting Hard RouteMean DirectMean Ratio ObsOverlap Gap Sharp Conn.
+base 0.1941 0.7234 0.7087 1.0208 0.5805 0.1042 0.0548 0.1133
+no obstacle input 0.2812 0.4352 0.8810 0.4940 0.3951 0.5208 0.0384 0.0432
+strong obstacle 0.2597 0.6059 0.5427 1.1164 0.4539 0.2083 0.0540 0.0694
+low l sharp 0.2105 0.2547 0.3437 0.7411 0.1625 0.8542 0.0291 0.0099
+high l wide 0.1394 0.8746 0.8528 1.0256 0.7925 0.0000 0.0771 0.2106
+low core 0.3077 0.6149 0.6126 1.0039 0.4739 0.1875 0.0713 0.0583
+low spread 0.2487 0.6158 0.5912 1.0415 0.4895 0.1667 0.0583 0.0744
+strong readout 0.1474 0.2809 0.2390 1.1752 0.2287 0.8750 0.0559 0.0151
+Table 11: Representative results from the tenth-run obstacle-bending stress sweep on one held-out
+sample. The split model now shows a measurable preference for the bent route in several settings,
+but obstacle overlap remains too high for a clean avoidance solution.
+J.3 What We Learn from the Tenth Run
+This run is the strongest evidence so far that PF 2V-WM can represent nontrivial path geometry. Earlier
+experiments showed centerline continuity and width control; this one adds early signs of route preference
+under environmental constraints. The decisive evidence is the contrast withno obstacle input: when the
+obstacle channel is removed, route ratio collapses, so the bent-path behavior cannot be explained by the
+target alone.
+The right interpretation is therefore encouraging but restrained. The model now understandsgo around, but
+not yetgo around cleanly. Its latent core is often fully connected along the target route, which is a real gain.
+But the final prediction still overlaps the obstacle too much, and some settings achieve good route ratios
+only by becoming overly sparse or unstable. In short, the geometry is beginning to work, but it remains
+sloppy.
+J.4 Recommended Next Changes After Run Ten
+The next experiment should focus on one thing only: making obstacle overlap much more expensive while
+preserving the route target and the connected core.
+•increase the obstacle-overlap penalty directly on the final prediction, not only through latent repulsion
+terms;
+•keep the split core–spread design, since the latent core is already showing strong route continuity;
+•sweep obstacle strength more densely to identify the transition between straight-line failure and true
+bending behavior;
+•report route ratio and obstacle overlap together, since either metric alone can be misleading;
+•compare against an obstacle-conditioned CNN baseline to test whether the route preference is specific to
+PF2V-WM.
+J.5 Qualitative Figure from the Tenth Run
+Figure 15 shows the representative base-configuration output from the obstacle-bending run. The latent core
+path follows the bent route continuously, which is the clearest qualitative sign yet that the model is doing
+route selection rather than only endpoint interpolation. The remaining weakness is visible too: the final
+prediction still bleeds into the obstacle region instead of carving out a clean avoidance corridor.
+41
+
+===== PAGE 42 =====
+Figure 15: Tenth prototype qualitative result: PF 2V-WM now prefers a bent route around an
+obstacle and maintains a connected latent core path, but the final prediction still overlaps the
+obstacle too much to count as clean avoidance.
+42
+
+===== PAGE 43 =====
+K Prototype Appendix: Eleventh Run with Revised Obstacle-
+Bending Sweep
+This eleventh appendix entry repeats the obstacle-bending experiment with a cleaner evaluation script and
+the same core question: does PF 2V-WM prefer the bent route over the straight-line shortcut when an
+obstacle blocks the direct path?
+K.1 What We Changed
+Relative to the tenth run, the underlying model family stayed the same, but the evaluation protocol was
+cleaned up:
+•the obstacle-bending task again used an eight-channel input with an explicit obstacle field;
+•the split core–spread formulation was retained;
+•the evaluation was rewritten to report metrics directly from probabilities rather than via logits recon-
+structed from probabilities;
+•the compactness proxy was also stabilized by using a bounded normalization rather than the earlier
+unbounded target-over-active ratio;
+•the same stress sweep was repeated to check whether the route-preference result was robust to this cleaner
+measurement setup.
+The purpose of this run was not to change the story dramatically, but to check whether the encouraging
+obstacle-bending result survives a cleaner metric pipeline.
+K.2 What We Got
+The answer is yes, but only in a limited sense. The base configuration reported soft IoU 0.1224, hard IoU
+0.1941, mass 0.0933, sharpness 0.0548, connectivity 0.1133, route mean 0.7234, direct mean 0.7087, route
+ratio 1.0208, route gap 0.1042, and obstacle overlap 0.5805. The latent core remained especially strong,
+with core route mean 0.9129, core route gap 0.0000, and core route ratio 1.0044. So the central claim from
+run ten survives: the model slightly prefers the bent route over the straight line, and the latent core stays
+continuously connected along that route.
+Table 12 summarizes representative stress-sweep settings. The same high-level pattern reappears. Removing
+obstacle input again collapses route preference:no obstacle inputyields route ratio 0.4940. Stronger
+obstacle forcing helps bending, as instrong obstaclewith route ratio 1.1164 and obstacle overlap 0.4539.
+Lowℓagain lowers obstacle overlap, but only by making the route brittle:low l sharpgives obstacle overlap
+0.1625 but route ratio only 0.7411 and route gap 0.8542. This confirms the same tradeoff more cleanly: the
+model can prefer the obstacle-avoiding route, but it still struggles to avoid the obstacle sharply while keeping
+the whole path strong.
+K.3 What We Learn from the Eleventh Run
+This run is best read as a robustness check on run ten rather than as a fundamentally new breakthrough.
+Its importance is that the main conclusion survives cleaner measurement: PF 2V-WM is no longer only
+connecting endpoints, but is beginning to represent route choice under constraint. The contrast with
+no obstacle inputremains the key evidence that the obstacle field genuinely changes the route decision.
+43
+
+===== PAGE 44 =====
+Setting Hard RouteMean DirectMean Ratio ObsOverlap Gap Sharp Conn.
+base 0.1941 0.7234 0.7087 1.0208 0.5805 0.1042 0.0548 0.1133
+no obstacle input 0.2812 0.4352 0.8810 0.4940 0.3951 0.5208 0.0384 0.0432
+strong obstacle 0.2597 0.6059 0.5427 1.1164 0.4539 0.2083 0.0540 0.0694
+low l sharp 0.2105 0.2547 0.3437 0.7411 0.1625 0.8542 0.0291 0.0099
+high l wide 0.1394 0.8746 0.8528 1.0256 0.7925 0.0000 0.0771 0.2106
+low core 0.3077 0.6149 0.6126 1.0039 0.4739 0.1875 0.0713 0.0583
+low spread 0.2487 0.6158 0.5912 1.0415 0.4895 0.1667 0.0583 0.0744
+high penalty 0.2415 0.6801 0.6802 0.9999 0.5330 0.1458 0.0537 0.0813
+Table 12: Representative results from the eleventh-run obstacle-bending sweep on one held-out
+sample. The cleaner evaluation preserves the main conclusion: PF 2V-WM now shows mild route
+preference, but obstacle overlap remains too high for crisp avoidance.
+The interpretation is therefore stable. The model understandsgo aroundat a weak but real level, especially
+in the latent core. But it still does not understandgo around cleanly: obstacle overlap is too high, and
+several settings achieve better avoidance only by becoming fragile or overly sparse. In short, the planning
+signal now looks reproducible, but the geometry remains sloppy.
+K.4 Recommended Next Changes After Run Eleven
+The next run should target clean avoidance directly:
+•increase the explicit obstacle-overlap penalty on the final prediction;
+•retain the split core–spread design, since the latent core is already consistently following the bent route;
+•sweep obstacle strength more densely to map the transition from straight-line preference to stable bending;
+•report route ratio, route gap, and obstacle overlap together for every future comparison;
+•add an obstacle-aware CNN baseline so the route-preference effect can be interpreted comparatively.
+K.5 Qualitative Figure from the Eleventh Run
+Figure 16 shows the representative output from the revised obstacle-bending sweep. The latent core still
+tracks the bent route cleanly, which supports the claim that the model is representing route selection rather
+than only drawing a diffuse bridge. As in the previous run, however, the final prediction still overlaps the
+obstacle too much, so the path is directionally correct but not yet cleanly carved.
+44
+
+===== PAGE 45 =====
+Figure 16: Eleventh prototype qualitative result: the revised obstacle-bending evaluation again
+shows a connected latent core following the bent route, but the final prediction still overlaps the
+obstacle too much for clean avoidance.
+45
+
+===== PAGE 46 =====
+L Prototype Appendix: Twelfth Run with PF 2V-WM and CNN
+Baseline
+This twelfth appendix entry adds the obstacle-aware CNN baseline that the previous run recommended.
+The central question is no longer only whether PF 2V-WM can bend around an obstacle in isolation, but
+whether that behavior remains meaningful when compared against a standard feedforward segmentation
+model trained on the same routing task.
+L.1 What We Changed
+Relative to the eleventh run, the data generator and obstacle-bending task stayed fixed, but the evaluation
+now includes an explicit model comparison:
+•PF 2V-WM and a plain CNN were trained on the same eight-channel obstacle-routing data;
+•both models were evaluated on the same held-out obstacle-bending batch;
+•the comparison emphasized route ratio, obstacle overlap, and hard IoU rather than only aggregate overlap
+metrics;
+•PF 2V-WM also retained its latent-core diagnostics so that route planning in the hidden state could be
+compared against the CNN’s purely feedforward mask prediction;
+•qualitative figures were saved for both the PF 2V-WM prediction and the CNN prediction on the same
+representative sample.
+The point of this run was to distinguish two different kinds of success: obstacle-aware route selection versus
+smooth foreground painting.
+L.2 What We Got
+The comparison is now genuinely informative. On the held-out batch, PF 2V-WM achieved soft IoU 0.1332,
+hard IoU 0.2049, route mean 0.6295, direct mean 0.5677, route ratio 1.1089, obstacle overlap 0.5454, route gap
+0.2676, sharpness 0.0673, and connectivity 0.1621. The CNN achieved soft IoU 0.1415, hard IoU 0.1780, route
+mean 0.7300, direct mean 0.8435, route ratio 0.8654, obstacle overlap 0.8119, route gap 0.1908, sharpness
+0.0465, and connectivity 0.1853.
+Table 13 makes the tradeoff clear. PF 2V-WM wins on the metrics that matter most for obstacle-aware
+routing: hard IoU, route ratio, and obstacle overlap. In other words, it is more likely than the CNN to prefer
+the bent route over the straight-line shortcut, and it places substantially less probability mass inside the
+obstacle. The CNN wins on soft IoU, sharpness, and connectivity, which means it produces a smoother and
+visually cleaner corridor, but that corridor is less faithful to the obstacle constraint. The cleanest summary
+is therefore simple: PF 2V-WM wins on route logic, while the CNN wins on mask appearance.
+Model Soft Hard RouteMean DirectMean Ratio ObsOverlap Gap Sharp Conn.
+PF2V-WM 0.1332 0.2049 0.6295 0.5677 1.1089 0.5454 0.2676 0.0673 0.1621
+CNN 0.1415 0.1780 0.7300 0.8435 0.8654 0.8119 0.1908 0.0465 0.1853
+Table 13: Held-out comparison between PF 2V-WM and an obstacle-aware CNN baseline on the
+twelfth-run routing task. PF 2V-WM performs better on route consistency and obstacle avoidance,
+while the CNN produces smoother and slightly more connected masks.
+46
+
+===== PAGE 47 =====
+PF2V-WM’s latent report strengthens that interpretation. Its core route mean was 0.8321, core route gap
+0.0938, and core route ratio 1.0484, which suggests that the latent core is still carrying an explicit route-
+planning signal even when the final prediction remains somewhat diffuse. That latent evidence is important
+because the CNN has no comparable internal path variable; it can paint a bright corridor, but it cannot
+show the same separation between route commitment and route spread.
+L.3 What We Learn from the Twelfth Run
+This is the first appendix run where the CNN baseline makes the paper’s claim sharper rather than weaker.
+PF2V-WM should not be presented as universally better than a standard CNN, because the results do not
+support that. What they do support is a narrower and stronger claim: PF 2V-WM has a better inductive
+bias for obstacle-aware routing and latent path planning, while the CNN is better at producing smooth,
+dense masks.
+A good main-text sentence is therefore the following: Compared with a standard CNN, PF 2V-WM produces
+more obstacle-aware and route-consistent latent paths, though the CNN often achieves smoother and more
+connected foreground masks. That is exactly the distinction visible in both the numbers and the qualitative
+examples.
+L.4 Recommended Next Changes After Run Twelve
+The next run should focus on turning PF 2V-WM’s route-planning advantage into a cleaner final mask:
+•increase penalties that suppress obstacle overlap in the final readout while preserving the strong latent-
+core route signal;
+•compare additional baselines, such as a wider CNN or a U-Net-style model, to test whether the route-logic
+advantage survives against stronger feedforward architectures;
+•report route ratio and obstacle overlap as primary metrics in the main text, since those are the measures
+on which the model family actually differs conceptually;
+•add side-by-side qualitative examples whenever PF 2V-WM wins on route logic but loses on surface
+smoothness, because those are the most scientifically informative cases.
+L.5 Qualitative Figures from the Twelfth Run
+Figures 17 and 18 show the representative comparison sample. The PF 2V-WM panel is scientifically in-
+teresting because the latent core follows the intended bent route, even though the final mask still spreads
+too broadly around the obstacle. The CNN panel looks cleaner at first glance, but its prediction is less
+obstacle-aware and is more willing to light up the direct corridor through the blocked region.
+47
+
+===== PAGE 48 =====
+Figure 17: Twelfth prototype qualitative result for PF 2V-WM: compared with the CNN baseline,
+the model shows a stronger route-planning bias and a visible latent-core path along the bent route,
+but its final prediction still spreads too broadly near the obstacle.
+48
+
+===== PAGE 49 =====
+Figure 18: Twelfth prototype qualitative result for the CNN baseline: the prediction is smoother
+and visually cleaner, but it is less faithful to the obstacle-aware bent route and more prone to
+activating the direct blocked corridor.
+M Prototype Appendix: Thirteenth Run with Frozen Final Com-
+parison and Small Ablation Set
+This thirteenth appendix entry is the point where the model family should be frozen rather than expanded.
+The question is no longer whether a different architecture might do slightly better, but whether the current
+split-core PF2V-WM tells a clean enough scientific story when compared against a CNN and a small, targeted
+ablation set.
+M.1 What We Changed
+Relative to the twelfth run, the experiment was simplified and made more final-form:
+•the split-core PF 2V-WM was kept as the main model and evaluated as the frozen reference configuration;
+•the comparison set was reduced to the most informative controls: no obstacle input, weak obstacle forcing,
+strong obstacle forcing, no core–spread separation, and the CNN baseline;
+•results were reported both on a held-out batch and on a single fixed sample so that the main tradeoffs
+could be read quantitatively and visually;
+•JSON and CSV summaries were saved so the final numbers could be reused directly in the paper workflow;
+•the run was framed explicitly as a final experiment set rather than an invitation to redesign the archi-
+tecture again.
+The purpose of this run was to decide whether the paper now has a stable empirical claim. The answer is
+yes.
+49
+
+===== PAGE 50 =====
+M.2 What We Got
+On the held-out comparison, the frozen split-core PF 2V-WM achieved soft IoU 0.1374, hard IoU 0.2181,
+route ratio 1.2355, obstacle overlap 0.5385, route gap 0.2363, sharpness 0.0681, connectivity 0.1637, and
+compactness 0.2471. The no-split PF 2V variant achieved soft IoU 0.1134, hard IoU 0.1851, route ratio
+1.3942, obstacle overlap 0.6493, route gap 0.1211, sharpness 0.0823, connectivity 0.1974, and compactness
+0.1910. The CNN achieved soft IoU 0.0891, hard IoU 0.1793, route ratio 0.9064, obstacle overlap 0.8554,
+route gap 0.0781, sharpness 0.1248, connectivity 0.2380, and compactness 0.1725.
+Table 14 gives the clean summary. The split-core PF 2V-WM wins on the metrics that matter most for route
+reasoning: soft IoU, hard IoU, route ratio, obstacle overlap, sharpness, and compactness. The CNN still
+wins on connectivity, which means it paints a denser and smoother field, but it does so by activating too
+much of the direct blocked corridor. The no-split PF 2V variant is especially revealing: it can achieve an
+even higher route ratio, but it loses too much precision and obstacle discipline. That is exactly the evidence
+needed to justify keeping the split-core design.
+Model Soft Hard Ratio ObsOverlap Gap Sharp Conn. Compact
+PF2V-WM split-core 0.1374 0.2181 1.2355 0.5385 0.2363 0.0681 0.1637 0.2471
+PF2V-WM no-split 0.1134 0.1851 1.3942 0.6493 0.1211 0.0823 0.1974 0.1910
+CNN 0.0891 0.1793 0.9064 0.8554 0.0781 0.1248 0.2380 0.1725
+Table 14: Held-out comparison for the thirteenth-run frozen experiment set. The split-core PF 2V-
+WM gives the best overall routing tradeoff, while the CNN remains the most connected but least
+obstacle-aware model.
+The fixed-sample ablation set strengthens that claim further. The base split-core PF 2V-WM reached hard
+IoU 0.3806, route ratio 1.4035, obstacle overlap 0.3128, core route mean 0.8933, core route gap 0.0000, and
+core route ratio 1.1822. Removing the obstacle input drops route ratio to 0.8135, which is the cleanest
+evidence in the paper that obstacle information is causally driving the route choice. Increasing obstacle
+strength lowers obstacle overlap to 0.1942, while the no-split ablation again shows the characteristic tradeoff:
+route ratio rises to 1.4734, but hard IoU falls to 0.2087 and obstacle overlap worsens to 0.5897. The CNN,
+by contrast, remains much more connected (0.2299 versus 0.0451 for the split-core PF 2V-WM), but with
+very high obstacle overlap (0.8417) and route ratio below one (0.9412).
+Setting Hard Ratio ObsOverlap Gap Sharp Conn.
+PF2V base 0.3806 1.4035 0.3128 0.3750 0.0563 0.0451
+PF2V no obstacle 0.1912 0.8135 0.0621 0.7500 0.0405 0.0243
+PF2V weak obstacle 0.3246 1.2451 0.4753 0.1250 0.0583 0.1101
+PF2V strong obstacle 0.1944 1.4413 0.1942 0.7917 0.0523 0.0288
+PF2V no-split 0.2087 1.4734 0.5897 0.1042 0.0961 0.1935
+CNN fixed sample 0.2000 0.9412 0.8417 0.0000 0.1545 0.2299
+Table 15: Small ablation set on one fixed sample for the thirteenth run. The split-core PF 2V-WM
+offers the best balance of route logic, obstacle avoidance, and precision, while the CNN remains
+the smoothest but least constraint-aware model.
+M.3 What We Learn from the Thirteenth Run
+This is the point to stop broad architecture changes. The paper now has a clean and defensible empirical
+story. PF 2V-WM wins on routing logic, obstacle avoidance, and precision; the CNN wins on smoothness
+and connectivity. That is not a weakness of the result. It is the result.
+50
+
+===== PAGE 51 =====
+The most important ablation is also now unambiguous. When obstacle input is removed, route ratio drops
+below one. When core and spread are merged, route preference can remain high, but precision and obstacle
+handling degrade. And when obstacle forcing is increased, obstacle overlap falls substantially. Together,
+those facts support the paper’s strongest claim: the split-core PF 2V-WM is no longer just drawing diffuse
+blobs, but is learning a form of route logic that is distinct from simple smooth-mask prediction.
+A good final framing for the paper is therefore this: PF 2V-WM behaves like a reasoning-biased routing
+model, whereas the CNN behaves like a smoother painter of dense fields. The contribution is not that
+PF2V-WM is universally superior on every metric; it is that it carries a more appropriate inductive bias for
+obstacle-aware route selection.
+M.4 Recommended Final Positioning After Run Thirteen
+At this point, the paper should be written around the tradeoff rather than around another redesign:
+•present the split-core PF 2V-WM as the final model;
+•keep the no-obstacle and no-split ablations, since they are the strongest evidence for causal route logic
+and the value of core–spread separation;
+•keep the CNN baseline as the contrast model that wins on connectivity but loses on obstacle-aware
+routing;
+•report hard IoU, route ratio, and obstacle overlap as the central metrics for the main claim;
+•describe the empirical tradeoff explicitly: PF 2V-WM is a reasoning model, while the CNN is a smoother
+painter.
+M.5 Qualitative Figures from the Thirteenth Run
+Figures 19 and 20 show the final representative comparison. The PF 2V-WM figure is important because
+the latent core follows the bent route while the final prediction remains relatively sparse and obstacle-aware.
+The CNN figure is equally important because it makes the counter-story visible: the mask is smoother and
+more connected, but that smoothness comes from activating too much of the blocked direct corridor.
+51
+
+===== PAGE 52 =====
+Figure 19: Thirteenth prototype qualitative result for the frozen split-core PF 2V-WM. The final
+configuration shows strong route preference and a connected latent core along the bent path, while
+keeping obstacle overlap far below the CNN baseline.
+52
+
+===== PAGE 53 =====
+Figure 20: Thirteenth prototype qualitative result for the CNN baseline. The prediction is smoother
+and more connected, but it behaves more like a dense painter than an obstacle-aware routing model
+and overlaps the blocked corridor much more strongly.
+N Prototype Appendix: Fourteenth Run Memory Probe
+This fourteenth appendix entry tests a narrower claim than the earlier routing experiments. Instead of
+comparing broad model families, it asks whether a small memory-hardened PF 2V probe shows any useful
+repeated-pass effect on the same obstacle-routing sample. The scientific question is whether a simple latent
+hardening rule can improve route commitment or adaptive computation across repeated exposures to the
+same task.
+N.1 What We Changed
+Relative to the thirteenth run, this was a deliberately small conceptual probe rather than a full benchmark:
+•two small split-core PF 2V probes were trained, one without memory and one with an additional memory
+channel;
+•the memory version used a simple hardening rule that accumulated from the latent core while being
+discouraged inside the obstacle region;
+•both models were tested on the same held-out sample for three repeated passes;
+•the evaluation tracked route ratio, obstacle overlap, connectivity, and solver step count to look for evidence
+of adaptive compute or useful reuse;
+•qualitative figures were saved for the final no-memory and memory predictions, together with the hard-
+ened memory field.
+The point of the run was not to prove that memory is solved, but to check whether even a small hardening
+mechanism creates an interpretable repeated-pass signal.
+53
+
+===== PAGE 54 =====
+N.2 What We Got
+The main result is negative to weakly inconclusive. On the repeated-pass test, the no-memory model stayed
+essentially unchanged across all three passes: soft IoU 0.0439, hard IoU 0.0000, route ratio 0.9208, obstacle
+overlap 0.1673, route gap 1.0000, sharpness 0.1037, connectivity 0.0000, and steps used 4. The memory-
+hardened model changed slightly across passes, but not in a clearly beneficial way. Its route ratio increased
+from 0.9275 on pass one to 0.9454 on pass three, but obstacle overlap also increased from 0.1549 to 0.1862,
+hard IoU remained 0.0000, connectivity remained 0.0000, and the solver still used all four steps on every
+pass.
+Table 16 summarizes the repeated-pass comparison. The most honest reading is that the hardening rule does
+produce a measurable latent effect, because the memory model drifts across passes while the no-memory
+model does not. But that effect is not yet useful by the metrics that matter. The model does not become
+more connected, does not reduce route gap, does not improve hard overlap, and does not show any adaptive
+reduction in step count. In short, memory changes the trajectory, but it does not yet improve the route
+solution.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+no-memory pass 1 0.0439 0.0000 0.9208 0.1673 1.0000 0.1037 0.0000 4.0000
+no-memory pass 2 0.0439 0.0000 0.9208 0.1673 1.0000 0.1037 0.0000 4.0000
+no-memory pass 3 0.0439 0.0000 0.9208 0.1673 1.0000 0.1037 0.0000 4.0000
+memory pass 1 0.0380 0.0000 0.9275 0.1549 1.0000 0.1197 0.0000 4.0000
+memory pass 2 0.0382 0.0000 0.9357 0.1724 1.0000 0.1349 0.0000 4.0000
+memory pass 3 0.0379 0.0000 0.9454 0.1862 1.0000 0.1485 0.0000 4.0000
+Table 16: Repeated-pass comparison for the fourteenth-run memory-hardening probe on one held-
+out sample. The memory model shows a small across-pass drift, but not a clear improvement in
+routing quality or compute efficiency.
+The final single-pass diagnostics tell the same story. By pass three, the no-memory model had route mean
+0.1771, direct mean 0.1923, route ratio 0.9208, obstacle overlap 0.1673, core route mean 0.4592, and core
+route gap 0.9000. The memory model had route mean 0.2092, direct mean 0.2212, route ratio 0.9454, obstacle
+overlap 0.1862, core route mean 0.3466, and core route gap 0.9250. That is not the signature of a useful
+memory system. If anything, the memory probe slightly increases activation without producing a cleaner
+path.
+N.3 What We Learn from the Fourteenth Run
+This run should not be sold as a success. It is best understood as a boundary-finding experiment. A naive
+memory-hardening rule is not enough by itself to produce meaningful repeated-pass improvement on this
+task. The probe does show that latent memory can perturb the trajectory across passes, but the perturbation
+is not yet aligned with better routing, better avoidance, or lower compute.
+That negative result is still useful. It suggests that memory in PF 2V-WM cannot just be an extra accu-
+mulation channel added on top of an otherwise weak solver. For memory to matter scientifically, the base
+routing solution probably has to be stronger first, and the hardening rule likely has to be more structured
+than simple path accumulation. The cleanest claim is therefore modest: this probe shows that memory
+effects are possible, but not yet beneficial.
+54
+
+===== PAGE 55 =====
+N.4 Recommended Next Changes After Run Fourteen
+If memory is pursued further, it should be treated as a second-stage research question rather than the next
+main experiment:
+•keep the frozen routing comparison from run thirteen as the main paper result;
+•revisit memory only after the base obstacle-routing solver reliably produces connected paths on the probe
+task;
+•make memory task-specific, for example by hardening previously successful route segments rather than
+all core activation equally;
+•evaluate adaptive computation with a stronger stopping rule, since the current probe always uses the full
+step budget;
+•present this run as an honest negative or inconclusive appendix result rather than as evidence that
+memory is already working.
+N.5 Qualitative Figures from the Fourteenth Run
+Figures 21 and 22 show the representative memory probe outputs. The visual comparison matches the
+metrics: the memory model changes the activation pattern, but it does not yet carve out a clearer route.
+The final hardened memory field is best interpreted as a trace of repeated latent use, not as evidence of
+successful long-term path reuse.
+55
+
+===== PAGE 56 =====
+Figure 21: Fourteenth prototype qualitative result for the no-memory probe. The prediction re-
+mains weak and disconnected across repeated passes, which matches the zero hard IoU and full
+route gap reported in the diagnostics.
+56
+
+===== PAGE 57 =====
+Figure 22: Fourteenth prototype qualitative result for the memory-hardening probe. The memory
+field changes the activation pattern across passes, but it does not yet improve route connectivity,
+obstacle avoidance, or adaptive step count in a meaningful way.
+57
+
+===== PAGE 58 =====
+O Prototype Appendix: Fifteenth Run Stronger Memory Probe
+This fifteenth appendix entry repeats the memory question under a stronger starting point. Instead of using
+a weak probe for both conditions, it compares a stronger split-core obstacle-routing model against a memory-
+augmented version built on the same base design. The scientific question is whether memory becomes useful
+once the underlying routing model is less fragile.
+O.1 What We Changed
+Relative to the fourteenth run, the probe was strengthened while keeping the scope deliberately small:
+•the base model was upgraded to a stronger split-core obstacle-routing probe on the same task family;
+•the memory model used the same architecture, but concatenated a memory channel and applied the same
+hardening rule across repeated passes;
+•both models were trained on the larger 64×64 routing setup rather than the smaller earlier probe grid;
+•evaluation again used three repeated passes on one held-out sample, tracking route ratio, obstacle overlap,
+route gap, connectivity, and step count;
+•qualitative figures were saved for the final base prediction, the final memory prediction, and the hardened
+memory field.
+The goal was to test a more favorable version of the memory hypothesis: perhaps memory fails only when
+the underlying routing substrate is too weak.
+O.2 What We Got
+This run is more encouraging than the previous memory probe, but still not strong enough to count as a
+full memory success. On the repeated-pass evaluation, the base split-core model remained flat across all
+three passes: soft IoU 0.0374, hard IoU 0.0000, route ratio 0.7518, obstacle overlap 0.2730, route gap 1.0000,
+sharpness 0.1470, connectivity 0.0000, and steps used 4.0000. The memory-enhanced model, by contrast,
+improved steadily across passes: soft IoU rose from 0.0387 to 0.0429, route ratio rose from 0.9449 to 1.0009,
+obstacle overlap increased modestly from 0.1336 to 0.1675, and sharpness moved from 0.0909 to 0.1173.
+Crucially, by pass three the memory model outperformed the base model on soft IoU, route ratio, obstacle
+overlap, and sharpness.
+Table 17 summarizes the repeated-pass comparison. The best evidence for memory is the route-ratio trend:
+the base model stays stuck below one, while the memory model rises from below one to essentially parity
+with the direct path, finishing at route ratio 1.0009. Obstacle overlap also remains clearly lower for the
+memory model at the final pass (0.1675 versus 0.2730). That said, the negative facts still matter. Hard IoU
+remains zero for both models, route gap remains one for both models, connectivity remains zero, and the
+model still uses the full four-step budget every time. So memory now helps the direction of the solution, but
+not yet the final thresholded path quality.
+The final-pass diagnostics make the tradeoff even clearer. By pass three, the base model had route mean
+0.1910, direct mean 0.2540, route ratio 0.7518, obstacle overlap 0.2730, core route mean 0.4586, core route gap
+0.7750, and core route ratio 0.8051. The memory model had route mean 0.1789, direct mean 0.1788, route
+ratio 1.0009, obstacle overlap 0.1675, core route mean 0.3613, core route gap 0.9250, and core route ratio
+1.0809. This suggests that the memory channel is helping suppress the direct blocked corridor and rebalance
+activation toward the bent route, even though the absolute path remains too weak and disconnected.
+58
+
+===== PAGE 59 =====
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+base pass 1 0.0374 0.0000 0.7518 0.2730 1.0000 0.1470 0.0000 4.0000
+base pass 2 0.0374 0.0000 0.7518 0.2730 1.0000 0.1470 0.0000 4.0000
+base pass 3 0.0374 0.0000 0.7518 0.2730 1.0000 0.1470 0.0000 4.0000
+memory pass 1 0.0387 0.0000 0.9449 0.1336 1.0000 0.0909 0.0000 4.0000
+memory pass 2 0.0410 0.0000 0.9703 0.1523 1.0000 0.1045 0.0000 4.0000
+memory pass 3 0.0429 0.0000 1.0009 0.1675 1.0000 0.1173 0.0000 4.0000
+Table 17: Repeated-pass comparison for the fifteenth-run stronger memory probe on one held-out
+sample. The memory model shows a more favorable trend than the earlier probe, but still does not
+produce a connected thresholded route or adaptive reduction in solver steps.
+O.3 What We Learn from the Fifteenth Run
+This is the first memory appendix run that shows a genuinely favorable directional effect. Unlike the
+fourteenth run, the memory model is not merely drifting; it improves route ratio across repeated passes and
+finishes with substantially lower obstacle overlap than the non-memory baseline. That is a real sign that
+latent hardening may become useful once the base routing substrate is stronger.
+At the same time, the result remains incomplete. The model still fails the hard version of the task: no
+connected thresholded path emerges, route gap stays maximal, connectivity remains zero, and step count
+does not adapt. So the correct conclusion is not that memory is solved. It is that memory now shows the
+right tendencywithout yet delivering the full behavioral outcome.
+The strongest interpretation is therefore intermediate between the fourteenth and thirteenth runs. Run
+thirteen remains the main empirical result of the paper. Run fifteen is better read as a promising supporting
+probe: memory may help route preference and obstacle suppression once the routing model is strong enough,
+but it still does not provide reliable repeated-pass path completion.
+O.4 Recommended Next Changes After Run Fifteen
+If memory remains in scope, the next steps should be narrow and disciplined:
+•keep run thirteen as the paper’s main final experiment and present run fifteen only as a supporting probe;
+•strengthen the stopping criterion and inner-step schedule, since adaptive-compute evidence is still absent;
+•harden only route-consistent core segments rather than all core activation equally;
+•test repeated passes on a small set of held-out samples rather than one example, to check whether the
+route-ratio improvement is reproducible;
+•add a threshold-aware route-continuity objective if the goal is to turn the favorable soft trend into an
+actual connected path.
+O.5 Qualitative Figures from the Fifteenth Run
+Figures 23 and 24 show the stronger memory probe. The visual difference matches the numbers: the memory
+model reduces diffuse obstacle-overlapping activation and shifts the prediction toward the bent route more
+than the base model does. But the route is still too weak to register as a connected thresholded path, so the
+figures should be read as evidence of a soft directional gain rather than a solved memory effect.
+59
+
+===== PAGE 60 =====
+Figure 23: Fifteenth prototype qualitative result for the stronger base split-core probe. The model
+still under-activates the bent route and leaves the thresholded path disconnected, which is consistent
+with its subunit route ratio and zero hard IoU.
+60
+
+===== PAGE 61 =====
+Figure 24: Fifteenth prototype qualitative result for the stronger memory-enhanced probe. Re-
+peated hardening shifts activation toward the bent route and lowers obstacle overlap relative to the
+base model, but the final path is still too weak to count as a connected hard solution.
+61
+
+===== PAGE 62 =====
+P Prototype Appendix: Sixteenth Run Step-Depth Sweep
+This sixteenth appendix entry records the latest probe added to the paper: a controlled step-depth sweep
+around the stronger split-core and memory-augmented probes. The goal is not to replace the main routing
+comparison, but to isolate the newest empirical question, namely whether the favorable soft memory trend
+from run fifteen survives as solver depth increases on a fixed held-out sample.
+P.1 What We Changed
+Relative to the fifteenth run, the experimental setup stayed small but became more systematic:
+•three probes were trained on the same obstacle-routing task: a base split-core model, an additive-memory
+model, and a material-memory model;
+•all three models were evaluated on repeated passes over one held-out sample, with the two memory
+models carrying a hardened state across passes;
+•a focused sweep then varied only solver depth on that same held-out sample, so the comparison isolates
+how repeated inner updates trade off soft route preference against thresholded connectivity;
+•all numbers were saved to JSON and CSV so the sweep could be compared directly against the earlier
+appendix runs;
+•qualitative figures were saved for the final base and material-memory predictions on the representative
+sample.
+The scientific purpose of this run was to determine whether memory’s soft route-preference effect is robust
+or merely a single-setting artifact.
+P.2 What We Got
+The repeated-pass comparison again favors memory, but only in a narrow soft sense. By the final pass, the
+base model achieved soft IoU 0.0591, hard IoU 0.0240, route ratio 0.8994, obstacle overlap 0.2839, route gap
+0.9750, sharpness 0.1604, connectivity 0.0009, and steps used 4.0000. The additive-memory model reached
+soft IoU 0.0498, hard IoU 0.0000, route ratio 1.0221, obstacle overlap 0.1453, route gap 1.0000, sharpness
+0.1203, connectivity 0.0000, and steps used 4.0000. The material-memory model pushed further in the same
+direction, with soft IoU 0.0451, hard IoU 0.0000, route ratio 1.1172, obstacle overlap 0.0819, route gap 1.0000,
+sharpness 0.0707, connectivity 0.0000, and steps used 4.0000. So memory improves soft route preference and
+obstacle avoidance, especially in the material variant, but it still does not produce a connected hard path or
+any adaptive change in step count.
+Table 18 summarizes the repeated-pass result. The base model stays fixed below route ratio one, while
+both memory models start above one and rise slightly further across passes. That reproduces the favorable
+directional trend from run fifteen and makes the pattern stronger than in the earlier two-model comparison.
+But the trade-off is also clearer: the memory variants become progressively sparser, lose hard IoU entirely,
+and keep the route gap essentially maximal. The effect is therefore real but still partial: memory helps route
+preference and obstacle suppression more than route completion.
+The step sweep clarifies where the soft memory effect is strongest. For the base model, increasing the number
+of inner steps reduces obstacle overlap sharply and eventually pushes route ratio above one, but it does so
+by collapsing the field toward a sparse, disconnected solution:steps 2gives the best hard IoU (0.0677)
+and the only meaningful connectivity estimate (0.3400), whereassteps 12reaches route ratio 1.1492 with
+obstacle overlap 0.0164 only after hard IoU has fallen to 0.0000. The additive-memory model follows the
+same monotone soft-routing trend, moving from route ratio 0.9533 atsteps 2to 1.1852 atsteps 12,while
+obstacle overlap drops from 0.3217 to 0.0104; yet hard IoU remains zero throughout. The material-memory
+62
+
+===== PAGE 63 =====
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+base pass 1 0.0591 0.0240 0.8994 0.2839 0.9750 0.1604 0.0009 4.0000
+base pass 2 0.0591 0.0240 0.8994 0.2839 0.9750 0.1604 0.0009 4.0000
+base pass 3 0.0591 0.0240 0.8994 0.2839 0.9750 0.1604 0.0009 4.0000
+additive pass 1 0.0484 0.0000 1.0104 0.1352 1.0000 0.1107 0.0000 4.0000
+additive pass 2 0.0492 0.0000 1.0159 0.1410 1.0000 0.1159 0.0000 4.0000
+additive pass 3 0.0498 0.0000 1.0221 0.1453 1.0000 0.1203 0.0000 4.0000
+material pass 1 0.0448 0.0000 1.1159 0.0806 1.0000 0.0699 0.0000 4.0000
+material pass 2 0.0450 0.0000 1.1163 0.0814 1.0000 0.0704 0.0000 4.0000
+material pass 3 0.0451 0.0000 1.1172 0.0819 1.0000 0.0707 0.0000 4.0000
+Table 18: Repeated-pass comparison for the sixteenth-run step-depth sweep. Both memory vari-
+ants improve soft route preference across passes, and the material-memory version lowers obstacle
+overlap the most, but neither yields a connected hard route or adaptive compute savings.
+model is strongest on these soft metrics at every step count, climbing from route ratio 1.0314 atsteps 2to
+1.2248 atsteps 12,with obstacle overlap falling from 0.1945 to 0.0066. But across both memory variants
+the hard path still disappears under thresholding, so extra solver depth sharpens route bias more than it
+recovers a usable corridor.
+Setting Hard Ratio ObsOverlap Gap Sharp Conn.
+steps 2 base 0.0677 0.8985 0.5132 0.7500 0.2180 0.3400
+steps 4 base 0.0240 0.8994 0.2839 0.9750 0.1604 0.0009
+steps 8 base 0.0000 1.0519 0.0599 1.0000 0.0595 0.0000
+steps 12 base 0.0000 1.1492 0.0164 1.0000 0.0249 0.0000
+steps 2 additive 0.0000 0.9533 0.3217 1.0000 0.1936 0.0000
+steps 4 additive 0.0000 1.0221 0.1453 1.0000 0.1203 0.0000
+steps 8 additive 0.0000 1.1437 0.0324 1.0000 0.0425 0.0000
+steps 12 additive 0.0000 1.1852 0.0104 1.0000 0.0193 0.0000
+steps 4 material 0.0000 1.1172 0.0819 1.0000 0.0707 0.0000
+steps 12 material 0.0000 1.2248 0.0066 1.0000 0.0133 0.0000
+Table 19: Representative step-sweep settings from the sixteenth run. More solver steps improve
+soft route preference and obstacle avoidance for all three probes, with material memory strongest
+on those soft metrics, but hard connectivity survives only in the shallow two-step base setting.
+P.3 What We Learn from the Sixteenth Run
+This run sharpens the interpretation of the memory results. Memory is probably not pure noise, because
+both memory variants maintain a route-preference advantage over the base model and the material-memory
+version improves obstacle avoidance quite substantially. But memory is also not yet delivering the full
+behavior the paper would ultimately want. The dominant effect of the step sweep is that additional solver
+depth trades thresholded structure for soft route preference: as the number of inner updates increases,
+overlap with the obstacle drops and route ratio rises, but hard IoU and connectivity vanish.
+The most important positive signal is that material memory consistently biases the field toward the bent
+route while keeping obstacle overlap lower than either the base model or the additive-memory variant at
+every tested step count. That is useful evidence that the way memory is coupled into the latent material
+matters. At the same time, neither additive nor material memory solves the central failure mode: once the
+field is thresholded, the route is still too weak to count as a connected hard solution. The base model’s
+63
+
+===== PAGE 64 =====
+two-step setting is informative here: it preserves some hard structure, but at the cost of very high obstacle
+overlap and route ratio below one. So the best conclusion is again modest: memory appears to help soft
+route selection, but the main bottleneck is still path completion and thresholded connectivity.
+Taken together, runs fourteen through sixteen support a consistent story. Memory is not yet a main result,
+but it is no longer a purely negative direction either. Once the routing substrate is reasonably strong,
+memory begins to help route preference and obstacle suppression under some settings. That is enough to
+justify keeping memory as a future direction, but not enough to move it into the paper’s central claim.
+P.4 Recommended Next Changes After Run Sixteen
+The next memory experiments should be tighter and more selective than broader:
+•keep run thirteen as the main paper result and use runs fifteen and sixteen only as supporting exploratory
+evidence;
+•focus memory sweeps first on step count, because solver depth is now clearly the dominant knob control-
+ling the trade-off between soft route bias and hard connectivity;
+•once that trade-off is better understood, reintroduce a smaller set of memory-specific knobs such as gain
+and material coupling strength;
+•add an explicit connectivity-promoting objective, since the current bottleneck is no longer soft route
+preference alone;
+•test a small batch of held-out repeated-pass samples to see whether the favorable memory trend generalizes
+beyond one example;
+•report memory results as soft route-bias effects rather than as solved adaptive compute or solved long-
+term memory.
+P.5 Qualitative Figures from the Sixteenth Run
+Figures 25 and 26 show the step-sweep probe’s representative outputs. The material-memory model again
+bends more toward the target route than the base model, but the corridor remains too weak to survive
+thresholding. The figures therefore reinforce the numerical lesson: memory is starting to help with directional
+bias, but not yet with full route completion.
+64
+
+===== PAGE 65 =====
+Figure 25: Sixteenth prototype qualitative result for the base split-core probe in the latest step-
+sweep setup. The model retains some directional structure, but the final path remains too weak
+and fragmented to form a connected hard route.
+Figure 26: Sixteenth prototype qualitative result for the material-memory step-sweep probe. The
+prediction shifts more toward the bent route and suppresses obstacle overlap more strongly than
+the base model does, but the gain is still primarily soft and does not yet yield a strong connected
+hard solution.
+65
+
+===== PAGE 66 =====
+Q Prototype Appendix: Seventeenth Run Thinness Probe
+This seventeenth appendix entry adds the latest experiment to the paper: amaterial-thinness probedesigned
+to test whether the material-memory variant can be made more visible without losing its route-selection
+bias. The motivation comes directly from the previous appendix result. By the end of run sixteen, the
+material-memory model looked directionally better than the base model on soft metrics, yet it still failed to
+materialize a robust thresholded path. The new question is therefore narrower and more practical: can a
+thinness-oriented material probe preserve the route logic while producing a more legible corridor?
+Q.1 What We Changed
+Relative to the sixteenth run, the setup remained intentionally focused:
+•we kept the same three baseline probes—base, additive memory, and material memory—and added a
+material-thinvariant trained with extra pressure toward a thinner core representation;
+•the new material-thin probe used a longer training horizon for inner solver steps and an auxiliary regu-
+larization intended to encourage a narrower, more skeleton-like active path;
+•repeated-pass evaluation was again performed on one held-out sample, with memory hardening carried
+across passes for the memory-based probes;
+•the main sweep was simplified further to amaterial-thin step sweepover 4, 8, 12, and 16 solver steps,
+so the experiment isolates the trade-off between thinness, visibility, and solver depth;
+•the outputs were saved to JSON and CSV, and new qualitative figures were exported for the latest
+appendix update.
+The scientific purpose of this run was to test the hypothesis that the memory models are becomingmore
+correct but less loud: better at route selection and obstacle avoidance, but still too faint to survive a hard
+threshold.
+Q.2 What We Got
+The new repeated-pass comparison makes the trade-off clearer than before. By the final pass, the base
+model achieved soft IoU 0.0413, hard IoU 0.1600, route ratio 0.8593, obstacle overlap 0.3476, route gap
+0.8500, sharpness 0.1643, connectivity 0.0049, and steps used 4.0000. The additive-memory model reached
+soft IoU 0.0257, hard IoU 0.0000, route ratio 0.8688, obstacle overlap 0.1915, route gap 1.0000, sharpness
+0.1366, connectivity 0.0000, and steps used 4.0000. The material-memory model improved the balance
+further, with soft IoU 0.0227, hard IoU 0.0000, route ratio 0.9116, obstacle overlap 0.1048, route gap 1.0000,
+sharpness 0.0834, connectivity 0.0000, and steps used 4.0000. The material-thin model pushed obstacle
+overlap down to 0.0810 and sharpness to 0.0693, but its final route ratio fell to 0.8507 and it still failed to
+produce a connected hard path.
+Table 20 summarizes the repeated-pass result. The material-memory model is now the clearest winner on the
+soft routing objective that the probe seems to reward: it gives the best route ratio among the memory-based
+models and substantially lowers obstacle overlap relative to the base model. At the same time, the base
+model remains the only variant that produces any meaningful hard IoU on this held-out example. That
+means the current bottleneck is no longer simply route selection. It is the conversion of soft route preference
+into a visible, threshold-stable path.
+The step sweep strengthens that interpretation. For the base model, moving from 4 to 16 steps sharply lowers
+obstacle overlap from 0.3476 to 0.0084, but route ratio never rises above 0.8593 and hard IoU collapses from
+0.1600 to 0.0000. The additive-memory model behaves similarly, with modest gains in obstacle suppression
+66
+
+===== PAGE 67 =====
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+base pass 1 0.0413 0.1600 0.8593 0.3476 0.8500 0.1643 0.0049 4.0000
+base pass 2 0.0413 0.1600 0.8593 0.3476 0.8500 0.1643 0.0049 4.0000
+base pass 3 0.0413 0.1600 0.8593 0.3476 0.8500 0.1643 0.0049 4.0000
+additive pass 1 0.0263 0.0000 0.8595 0.1753 1.0000 0.1248 0.0000 4.0000
+additive pass 2 0.0261 0.0000 0.8639 0.1846 1.0000 0.1312 0.0000 4.0000
+additive pass 3 0.0257 0.0000 0.8688 0.1915 1.0000 0.1366 0.0000 4.0000
+material pass 1 0.0223 0.0000 0.9132 0.1040 1.0000 0.0836 0.0000 4.0000
+material pass 2 0.0225 0.0000 0.9119 0.1045 1.0000 0.0835 0.0000 4.0000
+material pass 3 0.0227 0.0000 0.9116 0.1048 1.0000 0.0834 0.0000 4.0000
+thin pass 1 0.0221 0.0000 0.8529 0.0804 1.0000 0.0696 0.0000 8.0000
+thin pass 2 0.0223 0.0000 0.8513 0.0808 1.0000 0.0695 0.0000 8.0000
+thin pass 3 0.0225 0.0000 0.8507 0.0810 1.0000 0.0693 0.0000 8.0000
+Table 20: Repeated-pass comparison for the seventeenth-run material-thinness probe. Material
+memory gives the best soft route-selection balance, while the base model remains the only setting
+that yields a visible hard path on the held-out sample.
+but no thresholded recovery at any step count. The material-memory model is the strongest of the non-
+thin variants: it reaches route ratio 0.9212 atsteps 8, keeps route ratio above 0.89 even atsteps 16, and
+reduces obstacle overlap to 0.0042. The material-thin model confirms the central trade-off. Atsteps 4it
+recovers a small amount of hard structure—hard IoU 0.0539 and connectivity 0.0957—but this comes with
+high obstacle overlap (0.3311), and the signal disappears again as the number of steps increases.
+Setting Hard Ratio ObsOverlap Gap Sharp Conn.
+steps 4 base 0.1600 0.8593 0.3476 0.8500 0.1643 0.0049
+steps 16 base 0.0000 0.8258 0.0084 1.0000 0.0131 0.0000
+steps 4 additive 0.0000 0.8595 0.1753 1.0000 0.1248 0.0000
+steps 16 additive 0.0000 0.8486 0.0056 1.0000 0.0111 0.0000
+steps 8 material 0.0000 0.9212 0.0247 1.0000 0.0308 0.0000
+steps 12 material 0.0000 0.9176 0.0088 1.0000 0.0150 0.0000
+steps 16 material 0.0000 0.8907 0.0042 1.0000 0.0091 0.0000
+steps 4 thin 0.0539 0.9083 0.3311 0.8750 0.1644 0.0957
+steps 8 thin 0.0000 0.8529 0.0804 1.0000 0.0696 0.0000
+steps 16 thin 0.0000 0.7985 0.0088 1.0000 0.0148 0.0000
+Table 21: Representative step-sweep settings from the seventeenth run. Material memory gives
+the strongest soft route preference and lowest obstacle overlap, while thinness only briefly recovers
+hard structure in the shallow four-step setting.
+Q.3 What We Learn from the Seventeenth Run
+This run gives a cleaner answer than the earlier exploratory memory sweeps. The material-memory version
+is the best at the thing the probe most plausibly wants the model to learn: it achieves the strongest route
+preference among the memory variants while also giving the lowest obstacle overlap among the non-thin
+models. The base model is still the only variant that sometimes produces a visible hard path, but it does so
+by lighting up the obstacle too aggressively. In other words, the base model looks clearer, but the material
+model is reasoning better.
+The most important trade-off is now explicit. The memory variants are becomingmore correct but less loud.
+67
+
+===== PAGE 68 =====
+They learn the route logic more cleanly than the base model does, yet they do not materialize that logic into
+a solid thresholded path. The material-thin probe partially confirms this diagnosis rather than resolving it.
+Thinness pressure can briefly recover some hard structure at low step count, but it does not survive deeper
+solver schedules, and the gained visibility is bought by reintroducing substantial obstacle overlap.
+That makes the next move much clearer than before. The most informative continuation is not a broader
+random sweep. It is a tighter material-only study centered on three things: solver depth, thinness pressure,
+and threshold choice. If the material-memory field already contains the right route information in a faint
+form, then a threshold sweep may reveal that some of the apparent failure is due to using a cutoff that is
+too strict for the current dynamics. Conversely, if no reasonable threshold produces a usable corridor, then
+the main missing ingredient is still an objective that explicitly rewards connected visible paths.
+Q.4 Recommended Next Changes After Run Seventeen
+The next memory experiments should now be highly targeted:
+•keep thematerial-memoryprobe as the main memory variant, since it has the best combination of
+route ratio and obstacle suppression;
+•keep thestep sweep, especially 8, 12, and 16, because those settings expose the tension between route
+correctness and thresholded visibility;
+•add a smallthinness or skeleton pressureto the core field, but evaluate it together with obstacle
+overlap so that extra visibility does not simply come from spreading onto the obstacle;
+•run athreshold sweepon the same saved outputs, since the current 0.5 cutoff is probably hiding some
+useful route structure;
+•frame the next probe explicitly as: can material memory become a visible path once the solver has enough
+steps and the core is pushed to stay thin?
+Q.5 Qualitative Figures from the Seventeenth Run
+Figures 27, 28, and 29 show the latest thinness-probe outputs. The visual pattern matches the quantitative
+one. The base model produces the strongest visible activation but spills heavily into the obstacle region.
+The material-memory model is cleaner and more selective, but too faint to survive a hard threshold. The
+material-thin model is thinner still, yet the extra sparsity mostly suppresses the signal rather than stabilizing
+a usable path.
+68
+
+===== PAGE 69 =====
+Figure 27: Seventeenth prototype qualitative result for the base split-core probe in the material-
+thinness setup. The path is more visibly activated than in the memory models, but it remains
+overly diffuse and overlaps the obstacle heavily.
+Figure 28: Seventeenth prototype qualitative result for the material-memory probe. The activation
+is cleaner and more obstacle-avoiding than the base model, supporting the interpretation that
+material memory improves route logic even when the thresholded path remains weak.
+69
+
+===== PAGE 70 =====
+Figure 29: Seventeenth prototype qualitative result for the material-thin probe. Thinness pressure
+produces a sparser field, but the route becomes too faint to count as a robust visible corridor under
+the current threshold.
+70
+
+===== PAGE 71 =====
+R Prototype Appendix: Eighteenth Run Material-Only Thresh-
+old Sweep
+This eighteenth appendix entry adds the next targeted experiment suggested by the seventeenth run: a
+material-only threshold sweep. The previous appendix showed that the material-thin probe could produce a
+faint route field that looked plausibly meaningful, but most of that structure disappeared under the default
+0.5 threshold. The new question is therefore extremely specific: is the model failing because the route is
+genuinely absent, or because the threshold is too strict for the current dynamics?
+R.1 What We Changed
+Relative to the seventeenth run, this probe narrows the design further:
+•we trained only amaterial-thinprobe, rather than comparing multiple model families at once;
+•the main evaluation again used repeated passes on a single held-out sample, so we could inspect how
+hardened memory affects a fixed example;
+•we ran a step sweep over 4, 8, 12, and 16 steps and then selected the best step by route ratio;
+•on that best-step output, we ran athreshold sweepfrom 0.10 to 0.50 to test whether a lower cutoff
+reveals useful path structure;
+•new qualitative figures were saved for the latest appendix update, including the best-step prediction, the
+hardened memory field, and the best-step core field.
+The scientific purpose of this run was to test whether the material-thin probe contains a usable corridor in
+soft form even when the default threshold says it does not.
+R.2 What We Got
+The repeated-pass result is mostly negative. By the final pass, the material-thin probe achieved soft IoU
+0.0164, hard IoU 0.0000, route ratio 0.6728, obstacle overlap 0.0498, route gap 1.0000, sharpness 0.0555,
+connectivity 0.0000, and steps used 8.0000. Across passes, route ratio drifted slightly downward from 0.6773
+to 0.6728, while obstacle overlap drifted slightly upward from 0.0487 to 0.0498. So the hardened memory
+does not rescue the route on this sample; if anything, the signal remains faint and slightly degrades over
+repeated passes.
+Table 22 summarizes the repeated-pass result. The important point is that the repeated-pass story is now
+stable but weak. The field remains sparse, obstacle overlap stays low, and the solver consistently uses eight
+steps, but the route never becomes visible enough to survive the default threshold. This means memory
+persistence alone is not sufficient to recover a usable corridor in the material-thin setting.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+pass 1 0.0158 0.0000 0.6773 0.0487 1.0000 0.0558 0.0000 8.0000
+pass 2 0.0161 0.0000 0.6741 0.0494 1.0000 0.0556 0.0000 8.0000
+pass 3 0.0164 0.0000 0.6728 0.0498 1.0000 0.0555 0.0000 8.0000
+Table 22: Repeated-pass comparison for the eighteenth-run material-only threshold probe. The
+material-thin model stays sparse and obstacle-avoiding across passes, but repeated hardening does
+not recover a visible hard path at the default threshold.
+71
+
+===== PAGE 72 =====
+The step sweep is also informative. The best route ratio occurs atsteps 4, with route ratio 0.7491, soft IoU
+0.0279, obstacle overlap 0.2160, and hard IoU still equal to 0.0000 at the default threshold. Increasing the
+number of steps steadily lowers obstacle overlap, from 0.2160 at four steps to 0.0060 at sixteen steps, but it
+also steadily lowers route ratio, from 0.7491 to 0.6304. So in this run, deeper solver schedules make the field
+cleaner but not smarter. The model becomes quieter without becoming more correct.
+The threshold sweep provides the central new result. When the best-step output is evaluated at lower
+thresholds, the apparently absent route is partly recovered. Hard IoU rises from 0.0000 at threshold 0.50 to
+0.0955 at threshold 0.30, peaks at 0.2727 at threshold 0.35, and then declines again for larger thresholds.
+This is the strongest direct evidence so far that the material-thin probe is storing some useful route structure
+in a faint latent form. At the same time, the cost is obvious: the best threshold by hard IoU still has obstacle
+overlap 0.2160 and connectivity only 0.0062, so lowering the cutoff reveals more path mass but does not yet
+create a robust connected corridor.
+Setting Hard Ratio ObsOverlap Gap Sharp Conn.
+steps 4 0.0000 0.7491 0.2160 1.0000 0.1506 0.0000
+steps 8 0.0000 0.6773 0.0487 1.0000 0.0558 0.0000
+steps 12 0.0000 0.6550 0.0146 1.0000 0.0236 0.0000
+steps 16 0.0000 0.6304 0.0060 1.0000 0.0124 0.0000
+th 0.25 0.0486 0.7491 0.2160 0.5250 0.1506 0.4402
+th 0.30 0.0955 0.7491 0.2160 0.7000 0.1506 0.1281
+th 0.35 0.2727 0.7491 0.2160 0.7750 0.1506 0.0062
+th 0.40 0.1364 0.7491 0.2160 0.8750 0.1506 0.0027
+th 0.50 0.0000 0.7491 0.2160 1.0000 0.1506 0.0000
+Table 23: Representative step and threshold sweep settings from the eighteenth run. Four solver
+steps give the strongest route ratio, and a threshold near 0.35 recovers the best hard IoU, but the
+revealed path is still weakly connected and overlaps the obstacle substantially.
+R.3 What We Learn from the Eighteenth Run
+This run sharpens the interpretation of the threshold issue. The material-thin probe is not completely failing
+to encode the route. Instead, it appears to encode afaintversion of the route that is largely invisible at
+threshold 0.5 and only partially recoverable at lower thresholds. That is an important conceptual distinction.
+The problem is no longer simply “no path.” It is now “path present, but too weak and too entangled with
+the obstacle to be robust.”
+The threshold sweep therefore supports a more precise version of the earlier claim that the model is becoming
+more correct but less loud. Lowering the threshold does reveal additional structure, and the jump from hard
+IoU 0.0000 at 0.50 to 0.2727 at 0.35 is too large to dismiss as noise. But this recovery is still incomplete.
+The best threshold does not produce strong connectivity, and the obstacle overlap remains high because the
+revealed mass is not selective enough. So threshold tuning can expose some latent competence, but it does
+not by itself solve the visibility problem.
+The broader implication is that the next improvement should not rely on thresholding alone. The model
+likely needs a training objective that explicitly rewards bothconnectednessandselective visibility. Otherwise,
+lower thresholds will continue to recover obstacle-heavy blobs instead of clean paths.
+R.4 Recommended Next Changes After Run Eighteen
+The next step is now even more focused:
+72
+
+===== PAGE 73 =====
+Figure 30: Eighteenth prototype qualitative result for the best-step material-thin prediction. The
+predicted route is faint but not absent, consistent with the threshold-sweep finding that lower
+cutoffs can recover some hidden structure.
+•keep thematerial-onlyprobe, since the present result is about how to convert a faint material-memory
+field into a visible path rather than about comparing architectures;
+•retain thestep sweep, but center future analysis near the best route-ratio regime around four to eight
+steps;
+•include athreshold sweepby default in future appendix probes, because the default threshold alone is
+now clearly misleading about how much structure is present;
+•add an explicitconnectivity-promoting or corridor-continuity objective, so that threshold recov-
+ery reveals a path rather than a diffuse obstacle-overlapping region;
+•treat threshold tuning as a diagnostic rather than as the final fix.
+R.5 Qualitative Figures from the Eighteenth Run
+Figures 30, 31, and 32 show the latest material-only threshold-sweep outputs. The best-step prediction is
+visibly faint but not empty. The hardened memory field preserves a structured trace of previous activation,
+and the core field confirms that the model concentrates some mass along the intended route. The figures
+therefore support the quantitative interpretation: useful route information is present, but it is too weak to
+count as a robust path under the current objective and threshold.
+73
+
+===== PAGE 74 =====
+Figure 31: Eighteenth prototype qualitative result for the final hardened memory field. The memory
+trace remains structured and obstacle-aware, but it does not by itself enforce a clean visible corridor.
+Figure 32: Eighteenth prototype qualitative result for the best-step core field. The core carries
+route information in a narrow latent form, but the field is still too weak to yield a robust connected
+path after thresholding.
+S Prototype Appendix: Nineteenth Run Material-Only Boosted
+Inference Probe
+This nineteenth appendix entry extends the eighteenth run with a more targeted inference-time diagnostic.
+The underlying question is no longer just whether lowering the threshold exposes hidden route structure. It is
+now whether a small amount ofinference-time boostingcan make that latent structure easier to read without
+changing the underlying material-only architecture. Concretely, this probe adds a temperature sweep on top
+of the earlier step and threshold sweeps.
+S.1 What We Changed
+Relative to the eighteenth run, the core training setup remained intentionally narrow, but the evaluation
+was expanded:
+74
+
+===== PAGE 75 =====
+•we again trained only thematerial-thinprobe, preserving the same emphasis on sparse material memory
+rather than broader architectural comparison;
+•we retained therepeated-pass analysison one held-out sample to check whether hardened memory
+can accumulate into a more visible corridor;
+•we repeated thestep sweepover 4, 8, 12, and 16 steps;
+•after selecting the best step by route ratio, we added a newtemperature sweepover 0.50, 0.65, 0.80,
+1.00, and 1.20 to test whether the same latent field becomes more readable under sharper inference;
+•we then ran thethreshold sweepon that best-step output and saved new qualitative figures for the
+boosted prediction, the final hardened memory field, and the best-step core field.
+The design logic is straightforward: if the path is already present but too faint, then temperature scaling
+and thresholding should act as diagnostic tools for visibility rather than as substitutes for learning.
+S.2 What We Got
+The repeated-pass story stays weak but stable. Across three passes, soft IoU moves only from 0.0158 to
+0.0164, hard IoU remains 0.0000, route ratio drifts slightly downward from 0.6773 to 0.6728, obstacle overlap
+drifts slightly upward from 0.0487 to 0.0498, route gap remains 1.0000, connectivity stays 0.0000, and the
+solver again uses exactly eight steps. So hardened memory still does not by itself turn the latent route into
+a visible connected corridor.
+The step sweep shows the same tradeoff seen in the eighteenth run, but now in sharper relief. Four steps
+give the strongest route ratio, 0.7491, but also the highest obstacle overlap, 0.2160. Increasing the number of
+steps steadily lowers obstacle overlap, down to 0.0060 at sixteen steps, yet also lowers route ratio to 0.6304.
+The field therefore becomes cleaner as the solver runs longer, but not more task-aligned in a thresholded
+sense.
+The new temperature sweep gives a useful diagnostic refinement. At the best step count of four, lowering
+the temperature from 1.00 to 0.50 improves hard IoU from 0.0000 to 0.0227 and lowers obstacle overlap
+from 0.2160 to 0.1439. At the same time, route ratio falls from 0.7491 to 0.6084. In other words, sharper
+inference helps make some route mass visible, but it does so by trading off part of the bent-route preference
+that made the best-step solution interesting in the first place.
+The threshold sweep remains the strongest result. At threshold 0.50, the best-step output still appears
+empty, with hard IoU 0.0000, route gap 1.0000, and connectivity 0.0000. But lowering the threshold reveals
+that the path is not absent. Hard IoU rises to 0.0955 at 0.30, peaks at 0.2727 at 0.35, and then declines again
+beyond that point. This is the clearest evidence so far that the material-thin probe now contains a usable
+latent path signal, but that signal remains soft, sparse, and only partially separable from the obstacle.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+pass 1 0.0158 0.0000 0.6773 0.0487 1.0000 0.0558 0.0000 8.0000
+pass 2 0.0161 0.0000 0.6741 0.0494 1.0000 0.0556 0.0000 8.0000
+pass 3 0.0164 0.0000 0.6728 0.0498 1.0000 0.0555 0.0000 8.0000
+Table 24: Repeated-pass comparison for the nineteenth-run boosted-inference probe. Repeated
+hardening keeps the field stable and sparse, but does not recover a visible hard path at the default
+threshold.
+75
+
+===== PAGE 76 =====
+Setting Hard Ratio ObsOverlap Gap Sharp Conn.
+steps 4 0.0000 0.7491 0.2160 1.0000 0.1506 0.0000
+steps 8 0.0000 0.6773 0.0487 1.0000 0.0558 0.0000
+steps 12 0.0000 0.6550 0.0146 1.0000 0.0236 0.0000
+steps 16 0.0000 0.6304 0.0060 1.0000 0.0124 0.0000
+temp 0.50 0.0227 0.6084 0.1439 0.9250 0.0989 0.0000
+temp 0.65 0.0227 0.6664 0.1749 0.9250 0.1215 0.0000
+temp 0.80 0.0227 0.7089 0.1968 0.9500 0.1370 0.0000
+temp 1.00 0.0000 0.7491 0.2160 1.0000 0.1506 0.0000
+temp 1.20 0.0000 0.7777 0.2280 1.0000 0.1594 0.0000
+th 0.25 0.0486 0.7491 0.2160 0.5250 0.1506 0.4402
+th 0.30 0.0955 0.7491 0.2160 0.7000 0.1506 0.1281
+th 0.35 0.2727 0.7491 0.2160 0.7750 0.1506 0.0062
+th 0.40 0.1364 0.7491 0.2160 0.8750 0.1506 0.0027
+th 0.50 0.0000 0.7491 0.2160 1.0000 0.1506 0.0000
+Table 25: Representative step, temperature, and threshold settings from the nineteenth run. Tem-
+perature scaling makes some path mass visible, but thresholding near 0.35 still gives the strongest
+hard-IoU recovery.
+S.3 What We Learn from the Nineteenth Run
+The main conclusion is that the model is no longer behaving randomly. It is learning theright route logic
+in a soft sense, especially in the way it suppresses mass in the obstacle and preserves a nontrivial bent-route
+preference. But that route is still too faint and too broken to survive the default binary cutoff. The model
+contains a real hidden path signal, yet it does not reliably output a solid fracture-like corridor.
+This matters because it sharpens the interpretation of the earlier threshold result. The issue is not simply
+“no path.” It is better described as “path present, but under-amplified and insufficiently connected.” The
+jump from hard IoU 0.0000 at threshold 0.50 to 0.2727 at threshold 0.35 is too large to dismiss as noise. At
+the same time, the best thresholded case still has obstacle overlap 0.2160 and connectivity only 0.0062. So
+the recovered route is meaningful, but not yet robust.
+The temperature sweep helps separate two kinds of improvement. Sharper inference at temperature 0.50
+produces a small gain in visible hard IoU and better obstacle avoidance, but it also weakens route ratio.
+Threshold reduction, by contrast, reveals more of the original route-aware field without changing the field
+itself. That means temperature scaling is a useful inference-time probe, but the central bottleneck still lies
+in training the model to produce a path that is simultaneously visible, selective, and connected.
+S.4 Recommended Next Changes After Run Nineteen
+The next experimental changes are now more specific:
+•keep thematerial-onlysetting, because the central issue is still path visibility within the fracture-style
+substrate rather than architecture selection;
+•preserve thestep sweep, but focus future analysis near the 4–8 step regime where route preference is
+strongest;
+•retain bothtemperatureandthreshold sweepsas standard diagnostics, since each reveals a different
+aspect of hidden route structure;
+•add an explicitconnectivity-promoting or corridor-continuity loss, because current threshold
+76
+
+===== PAGE 77 =====
+Figure 33: Nineteenth prototype qualitative summary for the boosted-inference probe. The panel
+shows the held-out input, target route, best-step prediction, and best-step core field. The prediction
+remains sparse and partially visible rather than fully absent.
+Figure 34: Nineteenth prototype detail view of the best-step probability and core fields. Both
+retain route-relevant structure, but neither yet produces a clean connected corridor after default
+thresholding.
+recovery exposes blobs and fragments more readily than a clean corridor;
+•add a strongerselective-visibility objective, so that useful route mass is amplified without also lighting
+up the obstacle.
+S.5 Qualitative Figures from the Nineteenth Run
+Figures 33, 34, and 35 show the qualitative outputs saved from the boosted-inference probe. The summary
+panel confirms that the best-step prediction is faint but structured, the detail panel shows that the best-step
+probability and core fields carry localized route information, and the hardened-memory panel shows that
+memory remains organized without by itself forcing a clean corridor. Together with the quantitative sweeps,
+these figures support the same interpretation: latent route information is present, but it is still too soft and
+too weakly connected to count as a robust visible path under the default objective.
+77
+
+===== PAGE 78 =====
+Figure 35: Nineteenth prototype qualitative result for the final hardened memory field. The memory
+trace remains smooth and structured, but repeated hardening still does not by itself produce a
+visible corridor at the default threshold.
+T Prototype Appendix: Twentieth Run Focused Batch Probe
+This twentieth appendix entry follows the boosted-inference result with a more focused held-out batch eval-
+uation. The probe keeps the split-core material-memory design, retains thinness and centerline supervision
+on the core field, and evaluates the same trained model across multiple step counts and thresholds on a batch
+of 32 held-out samples. The goal is to test whether the threshold effect observed on single examples persists
+across a small evaluation set.
+T.1 What We Changed
+Relative to the nineteenth run, the main change is that the evaluation is no longer restricted to one held-out
+sample. The focused follow-up uses:
+•afrozen split-core material-memory model, so the comparison isolates inference behavior rather
+than architecture changes;
+•explicitthinness and centerline supervisionon the core field, intended to push the model toward a
+sharper route trace;
+•astep sweepover 4, 8, 12, and 16 solver steps;
+•a compactthreshold sweepat 0.25, 0.35, and 0.50 for every step setting;
+•held-out batch evaluation with 32 samples, rather than judging only a single qualitative case.
+This makes the result a more conservative test of the earlier claim that useful route information exists but
+remains under-amplified.
+T.2 What We Got
+The training trace remains similar to the previous material-thin runs. At epoch 20, the model reports soft
+IoU 0.0298, hard IoU 0.0000, route ratio 0.8221, obstacle overlap 0.0514, and eight solver steps. Thus, during
+78
+
+===== PAGE 79 =====
+training, the model continues to form a soft path-like field but does not yet produce a reliable hard path at
+the default threshold.
+On the held-out batch, the step sweep again shows a visibility–safety tradeoff. At four steps, the model
+obtains the highest hard IoU, 0.0086, and soft IoU, 0.0418, but obstacle overlap is still high at 0.2174. At
+eight steps, obstacle overlap falls to 0.0474 while hard IoU drops to 0.0000. By sixteen steps, obstacle overlap
+is only 0.0058, but the field is too faint to survive thresholding, with hard IoU 0.0000 and connectivity 0.0000.
+In short, shallow inference is more visible but sloppier, while deeper inference is safer but ghost-like.
+The threshold sweep provides the main result. At step 4, lowering the threshold from 0.50 to 0.35 raises hard
+IoU from 0.0086 to 0.0562 and increases connectivity from 0.0002 to 0.0280. Lowering the threshold further
+to 0.25 gives the strongest batch-level hard IoU, 0.0687, and much stronger connectivity, 0.2922, while route
+gap improves from 0.9914 at threshold 0.50 to 0.6133 at threshold 0.25. This confirms the earlier qualitative
+diagnosis: the route signal is present, but it is still too soft to materialize at the standard cutoff.
+At later steps, however, even lower thresholds do not recover much structure. For example, at step 8,
+threshold 0.25 yields hard IoU only 0.0018, and at steps 12 and 16 all tested thresholds remain at hard IoU
+0.0000. This suggests that longer relaxation suppresses obstacle activation, but also suppresses the useful
+path signal below practical visibility.
+The best row at threshold 0.35 is thereforesteps 4 th 0.35, with hard IoU 0.0562, soft IoU 0.0418, route
+ratio 0.8903, obstacle overlap 0.2174, route gap 0.8977, and connectivity 0.0280. If the threshold is allowed
+to vary at the best step, the best row becomessteps 4 th 0.25, with hard IoU 0.0687, route gap 0.6133,
+and connectivity 0.2922. This is the most explicit evidence in the batch run that lower cutoffs recover latent
+structure, but only by accepting a low operating threshold and substantial obstacle overlap.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+steps 4 0.0418 0.0086 0.8903 0.2174 0.9914 0.1336 0.0002 4.0000
+steps 8 0.0249 0.0000 0.9631 0.0474 1.0000 0.0483 0.0000 8.0000
+steps 12 0.0132 0.0000 1.0461 0.0138 1.0000 0.0206 0.0000 12.0000
+steps 16 0.0078 0.0000 1.0734 0.0058 1.0000 0.0113 0.0000 16.0000
+Table 26: Held-out batch step sweep for the twentieth focused probe. Four steps give the most
+visible prediction, while deeper schedules reduce obstacle overlap but make the route too faint to
+survive default thresholding.
+Setting Soft Hard Ratio ObsOverlap Gap Conn. Threshold
+steps 4 th 0.25 0.0418 0.0687 0.8903 0.2174 0.6133 0.2922 0.2500
+steps 4 th 0.35 0.0418 0.0562 0.8903 0.2174 0.8977 0.0280 0.3500
+steps 4 th 0.50 0.0418 0.0086 0.8903 0.2174 0.9914 0.0002 0.5000
+steps 8 th 0.25 0.0249 0.0018 0.9631 0.0474 0.9969 0.0000 0.2500
+steps 8 th 0.35 0.0249 0.0000 0.9631 0.0474 1.0000 0.0000 0.3500
+steps 8 th 0.50 0.0249 0.0000 0.9631 0.0474 1.0000 0.0000 0.5000
+steps 12 th 0.25 0.0132 0.0000 1.0461 0.0138 1.0000 0.0000 0.2500
+steps 12 th 0.35 0.0132 0.0000 1.0461 0.0138 1.0000 0.0000 0.3500
+steps 12 th 0.50 0.0132 0.0000 1.0461 0.0138 1.0000 0.0000 0.5000
+steps 16 th 0.25 0.0078 0.0000 1.0734 0.0058 1.0000 0.0000 0.2500
+steps 16 th 0.35 0.0078 0.0000 1.0734 0.0058 1.0000 0.0000 0.3500
+steps 16 th 0.50 0.0078 0.0000 1.0734 0.0058 1.0000 0.0000 0.5000
+Table 27: Threshold sweep settings from the twentieth focused probe. The best batch-level recovery
+occurs at four solver steps and threshold 0.25, confirming that the route exists mostly as a weak
+sub-threshold signal.
+79
+
+===== PAGE 80 =====
+T.3 What We Learn from the Twentieth Run
+This run says that the model is starting to produce a usable shape, but it is not yet reliably solving the route
+problem. The material-thin setup is clearly changing the output and is not random: it learns where route
+mass should approximately appear and can suppress obstacle activation under deeper relaxation. However,
+it still fails to commit strongly enough to a connected corridor at the normal 0.50 threshold.
+The practical interpretation is that the model now hasroute logic, but not yet fullmaterialization. At lower
+thresholds, especially 0.25, the path-like signal becomes visible and connectivity improves. At the default
+threshold, the same signal largely disappears. The model therefore knows the direction of the solution, but
+it still whispers instead of drawing a firm fracture line.
+The step sweep also clarifies the failure mode. Four steps preserve enough signal to recover a partial path
+after threshold lowering, but obstacle overlap remains high. Twelve or sixteen steps make the prediction
+safer around the obstacle, but also suppress the useful path mass until the output becomes ghost-like. The
+next improvement should therefore strengthen core commitment while preserving the obstacle avoidance
+gained from the material dynamics.
+T.4 Recommended Next Changes After Run Twenty
+The next useful move is no longer broad sweeping. The focused target should be to strengthen the route
+core without losing obstacle selectivity:
+•increasecore commitment pressureso that route mass rises above the default threshold;
+•keepmaterial obstacle suppression, since deeper schedules show that this mechanism is useful;
+•add a directconnected-corridor objective, because threshold recovery still leaves broken fragments;
+•treat the 0.25 threshold result as adiagnostic, not as the final operating point;
+•evaluate future changes on held-out batches, since the batch result is more conservative than single-sample
+threshold recovery.
+T.5 Qualitative Figures from the Twentieth Run
+Figures 36 and 37 show the held-out visualization from the focused batch probe. The summary figure shows
+that the prediction and core field carry localized route structure, and that thresholding at 0.35 recovers a
+small visible fragment. The separate 0.50 threshold figure shows the central problem directly: under the
+standard cutoff, the prediction is effectively empty.
+80
+
+===== PAGE 81 =====
+Figure 36: Twentieth prototype qualitative summary for the focused held-out batch probe. The
+prediction and core field show localized route-like structure, while the 0.35 threshold recovers only
+a small disconnected fragment.
+Figure 37: Twentieth prototype thresholded prediction at 0.50. The near-empty image illustrates
+that the current route signal remains below the standard binary commitment threshold.
+U Prototype Appendix: Twenty-First Run Geodesic Flow Probe
+This twenty-first appendix entry tests a different but closely related formulation: ageodesic-flowprobe.
+Instead of using the earlier fracture core–spread readout, this experiment trains a potential fieldϕand
+a wave field whose gradients define an extracted path. The purpose is to ask whether a more explicitly
+potential-field-like substrate can solve the routing geometry even if the visible probability map remains
+81
+
+===== PAGE 82 =====
+weak.
+U.1 What We Changed
+The new probe replaces the split-core material-memory architecture with a compact geodesic-flow network:
+•the input uses four channels: source, goal, source–goal charge, and obstacle field;
+•a learned encoder predicts an initial potential fieldϕand wave field;
+•repeated flow updates combine diffusion, source–goal forcing, obstacle repulsion, and gradient penalties;
+•the path is extracted directly by descending the learned potential field from the start point;
+•training uses binary cross entropy, smoothness, obstacle penalty, and an eikonal-style regularizer on∥∇ϕ∥.
+This makes the run a useful contrast case: it separateslatent route logicin the potential field fromvisible
+path materializationin the probability map.
+U.2 What We Got
+The training loss decreases steadily, from 1.2266 at epoch 5 to 0.2324 at epoch 40. However, hard IoU
+collapses over the same period: it begins at 0.0272 at epoch 5, falls to 0.0070 by epoch 20, and reaches 0.0000
+from epoch 30 onward. So the optimization objective is improving, but the thresholded path prediction is
+not.
+Epoch Loss Hard IoU
+5 1.2266 0.0272
+10 1.0413 0.0231
+15 0.8451 0.0223
+20 0.6670 0.0070
+25 0.5043 0.0015
+30 0.3771 0.0000
+35 0.2906 0.0000
+40 0.2324 0.0000
+Table 28: Training trace for the twenty-first geodesic-flow probe. Loss decreases monotonically,
+but hard IoU collapses, showing that the visible probability map is not preserving the route.
+The qualitative result explains the mismatch. Figure 38 shows that the predicted probability concentrates
+mostly near the endpoints and around broad background activation rather than forming a clean corridor.
+The potential field, however, contains a coherent gradient structure, and the extracted path bends around
+the obstacle. This means the geodesic logic is partly present inϕ, but the readout does not materialize that
+logic as a usable binary path.
+U.3 What We Learn from the Twenty-First Run
+This run is weaker than the best fracture-style probes on the primary hard-IoU metric. The best fracture-
+threshold runs recovered hard IoU values around 0.06 on the held-out batch and up to 0.2727 on a favorable
+single-sample threshold sweep, whereas this geodesic-flow run ends at hard IoU 0.0000. So the geodesic
+formulation should not replace the fracture core–spread model yet.
+82
+
+===== PAGE 83 =====
+At the same time, the run is scientifically useful because it exposes the same failure mode in a cleaner form.
+The potential field behaves like a partial logic engine: it stores a route-aware geometry and can yield an
+obstacle-aware extracted path. The probability map behaves like a failing visualizer: it does not report that
+route as a continuous visible corridor. This is another version of the same “vanishing signal” problem seen
+in the material-thin experiments.
+The likely cause is class imbalance and weak path amplification. Since the route occupies a very small
+fraction of the image, binary cross entropy can reduce loss by suppressing most pixels, especially when the
+wave field is too weak to overcome the negative obstacle and gradient terms in the final sigmoid readout.
+The model learns something useful in the potential field, but the visible path is squashed before it becomes
+measurable.
+U.4 Recommended Next Changes After Run Twenty-One
+The geodesic-flow direction should not be abandoned, but it should be treated as a diagnostic branch rather
+than the main model until the readout improves:
+•compare the geodesic and fracture models directly on the same held-out batches;
+•replace plain BCE withDiceorsoft-IoUloss to reduce thin-line class imbalance;
+•normalize or sharpen the wave readout before the sigmoid, so the strongest path signal remains visible;
+•add explicitflow/path supervisionthat rewards propagation along the extracted geodesic, not only
+endpoint activation;
+•consider a hybrid model where the geodesic potential proposes a route and the fracture core–spread
+mechanism hardens it into a visible corridor.
+U.5 Qualitative Figure from the Twenty-First Run
+Figure 38 summarizes the geodesic-flow probe. The target route is clean and obstacle-avoiding, the predicted
+probability does not form the corridor, and the potential field contains the more interesting route-aware
+structure. The figure supports the main interpretation: the model has some latent path logic, but the
+probability veil is too weak or too poorly calibrated to expose it.
+83
+
+===== PAGE 84 =====
+Figure 38: Twenty-first prototype qualitative result for the geodesic-flow probe. The potential
+field supports an obstacle-aware extracted path, but the probability map does not materialize a
+continuous route, yielding hard IoU near zero.
+V Prototype Appendix: Twenty-Second Run Geodesic Flow v2
+This twenty-second appendix entry tests a strengthened geodesic-flow variant. The goal was to repair the
+previous geodesic probe by adding route-point supervision, Dice loss, threshold sweeps, step sweeps, and
+a normalized wave–potential readout. In principle, these changes should prevent the all-zero probability
+collapse and make the path signal visible.
+V.1 What We Changed
+Relative to the first geodesic-flow run, the second version adds several explicit anti-collapse mechanisms:
+•route-point supervision along the target polyline and nearby side offsets;
+•Dice loss and positive-weighted BCE to reduce thin-route class imbalance;
+•per-sample normalization of the wave and potential fields before the sigmoid readout;
+•a mass-floor penalty to discourage an all-black probability map;
+•step and threshold sweeps on a held-out batch of 32 samples.
+This run therefore tests whether the geodesic formulation can be made visible simply by strengthening the
+readout and supervision losses.
+84
+
+===== PAGE 85 =====
+V.2 What We Got
+The result is mixed but mostly negative. The model no longer collapses to an empty prediction. Instead, it
+overcorrects into broad blob-like activation. During training, hard IoU improves relative to the first geodesic
+run but remains low: it reaches 0.0359 at epoch 30 and ends at 0.0297 at epoch 50. The route ratio ends at
+1.2870, but obstacle overlap is very high at 0.7444.
+Epoch Loss Soft Hard Ratio ObsOverlap
+1 4.6457 0.0147 0.0129 1.2390 0.0710
+5 4.0476 0.0176 0.0145 1.2578 0.0855
+10 2.7767 0.0270 0.0225 1.1899 0.2072
+15 1.6191 0.0459 0.0336 0.9637 0.7631
+20 1.5111 0.0476 0.0288 0.9584 0.8813
+25 1.5350 0.0466 0.0292 0.9492 0.8682
+30 1.5036 0.0565 0.0359 1.0294 0.7750
+35 1.4210 0.0469 0.0276 1.2394 0.6805
+40 1.3584 0.0468 0.0250 1.2500 0.7526
+45 1.4909 0.0544 0.0330 1.1065 0.7767
+50 1.4646 0.0532 0.0297 1.2870 0.7444
+Table 29: Training trace for the twenty-second geodesic-flow probe. The strengthened losses prevent
+complete invisibility, but the model pays for this by activating broad obstacle-overlapping regions.
+On the held-out batch, the best step by hard IoU is four steps, with hard IoU 0.1021, soft IoU 0.0565, route
+ratio 0.9499, obstacle overlap 0.9560, route gap 0.0281, and connectivity 0.5511. The best threshold at that
+step is 0.50, which raises hard IoU to 0.1445 and keeps route gap low at 0.0977, but obstacle overlap remains
+0.9560. So the stronger readout makes the prediction visible, but not selective.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+steps 4 0.0565 0.1021 0.9499 0.9560 0.0281 0.2025 0.5511 4.0000
+steps 8 0.0570 0.0844 0.9576 0.9544 0.0188 0.2022 0.8729 8.0000
+steps 12 0.0548 0.0301 1.0531 0.8894 0.0000 0.2105 1.7875 12.0000
+steps 16 0.0519 0.0292 1.2575 0.7471 0.0039 0.2196 1.8360 16.0000
+Table 30: Held-out batch step sweep for the twenty-second geodesic-flow probe. Four steps give the
+best hard IoU, while longer steps increase route ratio and connectivity mostly by spreading broad
+activation.
+Setting Soft Hard Ratio ObsOverlap Gap Conn. Threshold
+step 4 th 0.25 0.0565 0.0274 0.9499 0.9560 0.0000 1.9639 0.2500
+step 4 th 0.35 0.0565 0.1021 0.9499 0.9560 0.0281 0.5511 0.3500
+step 4 th 0.50 0.0565 0.1445 0.9499 0.9560 0.0977 0.2895 0.5000
+step 8 th 0.50 0.0570 0.1413 0.9576 0.9544 0.0852 0.3020 0.5000
+step 12 th 0.50 0.0548 0.1386 1.0531 0.8894 0.0688 0.3176 0.5000
+step 16 th 0.50 0.0519 0.1400 1.2575 0.7471 0.0648 0.3150 0.5000
+Table 31: Representative threshold settings from the twenty-second geodesic-flow probe. Higher
+thresholds improve hard IoU by cutting the broad blob down, but the underlying obstacle overlap
+remains very high.
+85
+
+===== PAGE 86 =====
+V.3 What We Learn from the Twenty-Second Run
+This run improves the geodesic branch numerically, but not in the right way. Hard IoU rises above the
+previous geodesic run and even exceeds the twentieth material-thin batch result at the best threshold.
+However, the gain comes from a large circular activation blob rather than from a clean bent route. The
+obstacle overlap values, ranging from 0.7471 to 0.9560, make this failure mode explicit.
+The qualitative output in Figure 39 makes the problem visible. The target is an L-shaped corridor, but
+the prediction is a large disk. Thresholding at 0.35 and 0.50 produces clean white circles, not a path. The
+potential-field trace also shoots mostly upward rather than following the desired bend. Thus, the v2 geodesic
+model solves the previous invisibility problem by becoming too loud and too diffuse.
+The scientific takeaway is that the geodesic branch has shifted fromvanishing signaltoblob collapse. This
+is progress only in a narrow diagnostic sense: the readout can now produce mass, but it does not shape
+that mass into a corridor. Compared with the fracture core–spread model, the geodesic v2 probe is still less
+aligned with the desired materialized path behavior.
+V.4 Recommended Next Changes After Run Twenty-Two
+The next step should not be more generic geodesic training. It should either return to the fracture core–
+spread model or add much stronger path-shaping constraints to the geodesic branch:
+•prioritize thefracture + core/spread + material memorymodel as the main experimental line;
+•if continuing geodesic flow, add explicit anti-blob penalties such as area control, skeletonization pressure,
+and corridor-width constraints;
+•supervise the potential gradient direction so extracted paths follow the desired bend rather than endpoint-
+centered radial flow;
+•penalize obstacle overlap much more strongly, since the current geodesic readout lights up the obstacle
+region;
+•test a hybrid design where geodesic flow proposes a coarse path but fracture dynamics harden only a thin
+centerline.
+V.5 Qualitative Figure from the Twenty-Second Run
+Figure 39 shows the main failure clearly. The prediction has become visible, but the visible object is a broad
+circular blob. The thresholded maps therefore improve hard IoU numerically without representing the target
+route geometry.
+86
+
+===== PAGE 87 =====
+Figure 39: Twenty-second prototype qualitative result for geodesic-flow v2. Stronger supervision
+prevents an empty prediction, but the model collapses to a broad blob rather than a thin L-shaped
+path.
+W Prototype Appendix: Twenty-Third Run Soft Shortest-Path
+Probe
+This twenty-third appendix entry tests a more algorithmic routing baseline: a differentiable soft shortest-
+path model. Instead of learning a fracture field directly, the model learns a traversal-cost field, runs soft
+value iteration from the source and goal, and recovers occupancy from the summed soft distances. The
+motivation is to ask whether an explicit planning-like substrate can solve the detour problem more cleanly
+than the geodesic-flow probes.
+W.1 What We Changed
+The soft shortest-path probe differs from the geodesic-flow runs in several ways:
+•the input includes source, goal, charge, obstacle, and coordinate channels;
+•the network predicts a positive traversal-cost field rather than a direct path probability;
+•soft value iteration propagates distances from both source and goal seeds;
+•the predicted route is derived from normalized summed distances;
+•the loss combines weighted BCE, Dice, obstacle penalty, smoothness, route-point supervision, endpoint
+pressure, and a mass floor.
+This is a cleaner planning-style control experiment, but it still has to prove that the learned low-cost region
+becomes a thin obstacle-avoiding corridor rather than a broad basin.
+87
+
+===== PAGE 88 =====
+W.2 What We Got
+Training is stable but does not produce a clean route. Hard IoU fluctuates around 0.05–0.07 during training,
+peaking at 0.0685 at epoch 10 and ending at 0.0494 at epoch 35. Route ratio stays near 1.0, which means
+the model places probability along the desired route and direct shortcut at similar levels. Obstacle overlap
+remains consistently high, around 0.75–0.77, showing that the learned cost landscape is not sufficiently
+repelling the obstacle.
+Epoch Loss Soft Hard Ratio ObsOverlap
+1 1.5686 0.0540 0.0526 0.9981 0.7545
+5 1.5343 0.0525 0.0525 0.9969 0.7634
+10 1.5835 0.0616 0.0685 0.9686 0.7669
+15 1.5050 0.0505 0.0521 0.9997 0.7656
+20 1.5467 0.0603 0.0579 0.9961 0.7713
+25 1.5069 0.0575 0.0546 0.9979 0.7646
+30 1.5088 0.0523 0.0531 0.9969 0.7621
+35 1.4926 0.0510 0.0494 0.9992 0.7690
+Table 32: Training trace for the twenty-third soft shortest-path probe. The model learns a stable
+shaped field, but obstacle overlap remains high throughout training.
+On the held-out batch, the best step by hard IoU is 16 steps, with hard IoU 0.0797, soft IoU 0.0580, route
+ratio 0.9521, obstacle overlap 0.7204, route gap 0.0833, and connectivity 0.8195. This is mathematically
+cleaner than the geodesic blob-collapse result, but it is not a valid route solution because the prediction still
+overlaps the obstacle heavily.
+Setting Soft Hard Ratio ObsOverlap Gap Sharp Conn. Steps
+steps 8 0.0580 0.0382 0.8815 0.6167 0.0000 0.2178 2.0000 8.0000
+steps 16 0.0580 0.0797 0.9521 0.7204 0.0833 0.2071 0.8195 16.0000
+steps 24 0.0565 0.0550 0.9904 0.7470 0.0000 0.2085 1.3667 24.0000
+steps 32 0.0531 0.0531 0.9989 0.7038 0.0000 0.2095 1.4724 32.0000
+Table 33: Held-out batch step sweep for the twenty-third soft shortest-path probe. Sixteen value-
+iteration steps give the best hard IoU, but all settings retain high obstacle overlap.
+Setting Soft Hard Ratio ObsOverlap Gap Conn. Threshold
+step 8 th 0.50 0.0580 0.1398 0.8815 0.6167 0.3781 0.2758 0.5000
+step 16 th 0.35 0.0580 0.0797 0.9521 0.7204 0.0833 0.8195 0.3500
+step 16 th 0.50 0.0580 0.0797 0.9521 0.7204 0.0896 0.8195 0.5000
+step 24 th 0.50 0.0565 0.0700 0.9904 0.7470 0.0000 1.1559 0.5000
+step 32 th 0.50 0.0531 0.0775 0.9989 0.7038 0.0990 0.8797 0.5000
+Table 34: Representative threshold settings from the twenty-third soft shortest-path probe. Thresh-
+olding can improve hard IoU, especially at step 8, but this reflects large geometric basins rather
+than a clean corridor.
+W.3 What We Learn from the Twenty-Third Run
+This soft shortest-path version is mathematically interesting, but it is not yet a good solution to the routing
+task. It learns structured fields and high connectivity, but it still cuts through the obstacle too much. A
+88
+
+===== PAGE 89 =====
+best step-level hard IoU of 0.0797 with obstacle overlap 0.7204 means the model is learning a shaped field
+rather than a valid detour.
+The qualitative outputs in Figures 40 and 41 reveal the failure mode. The learned field produces diamond-
+like regions around the endpoints and broad basins in the distance map. These shapes are cleaner and more
+geometric than the circular blobs in the geodesic v2 run, but they still do not trace the target L-shaped
+route. The model is discovering symmetric low-cost basins, not carving a thin bent corridor.
+The scientific interpretation is that soft value iteration is a useful diagnostic baseline. It shows that the
+optimization machinery can build a planning-like field, but the learned cost field is too isotropic and too
+permissive through obstacles. The result is another form of endpoint-basin collapse: more structured than
+a blob, but still not a materialized path.
+W.4 Recommended Next Changes After Run Twenty-Three
+The soft shortest-path branch should be kept as a baseline, not treated as the main result yet:
+•prioritize the fracture core–spread family for the paper’s main empirical story;
+•strengthen obstacle repulsion in the shortest-path loss and learned cost field;
+•add thinness or skeletonization pressure so value iteration produces corridors instead of diamonds;
+•add directional or anisotropic costs to break the symmetric basin geometry;
+•test a hybrid where soft shortest-path supplies a coarse cost prior and fracture dynamics perform final
+path hardening.
+W.5 Qualitative Figures from the Twenty-Third Run
+Figure 40 shows the main summary panel. The learned cost field is structured, but the prediction and
+thresholded map form large diamond-shaped regions rather than the target route. Figure 41 isolates the
+0.50 threshold result and makes the failure even clearer: the output is a geometric basin, not a path.
+89
+
+===== PAGE 90 =====
+Figure 40: Twenty-third prototype qualitative result for the soft shortest-path probe. The learned
+cost and distance fields are structured, but the predicted occupancy forms broad diamond-shaped
+basins instead of the target bent corridor.
+Figure 41: Twenty-third prototype thresholded prediction at 0.50. The clean diamond shapes show
+that the model has learned symmetric basins rather than a thin obstacle-avoiding path.
+X Prototype Appendix: Twenty-Fourth Run Final Paper Pack
+This twenty-fourth appendix entry consolidates the prototype story into a final paper-pack comparison. It
+trains four PF2V variants—base, additive memory, material memory, and material-thin—then evaluates the
+best material-thin model on a standard held-out batch, a harder generalization batch, and a soft shortest-
+path negative control. The purpose is not to claim that the system is solved, but to state the strongest
+90
+
+===== PAGE 91 =====
+current evidence and the remaining failure modes in one place.
+X.1 What We Changed
+The final pack differs from the previous one-off probes in scope rather than architecture:
+•it compares thebase,additive-memory,material-memory, andmaterial-thinPF 2V variants under
+the same synthetic routing setup;
+•it evaluates repeated passes, step sweeps, and threshold sweeps on a held-out batch of 32 examples;
+•it adds a harder generalization batch with wider obstacles, stronger bends, and occasional multiple
+obstacles;
+•it includes a soft shortest-path control as a negative baseline;
+•it saves a compact result pack and three qualitative figures for the standard, hard-generalization, and
+soft-control cases.
+This gives a clearer final comparison between the fracture-style material substrate and the more algorithmic
+soft-control baseline.
+X.2 Main Held-Out Results
+On the standard held-out batch, the material-thin model remains the most useful PF 2V variant for visible
+path recovery. Its best step is 4, with hard IoU 0.0710, soft IoU 0.0393, route ratio 0.7455, obstacle overlap
+0.1673, route gap 0.9117, and connectivity 0.0067. The base model also recovers a weak visible signal at four
+steps, with hard IoU 0.0526, but it has higher obstacle overlap at 0.1970. The additive and material-memory
+variants are more conservative, but their hard IoU is lower at the same step.
+Model / setting Soft Hard Ratio ObsOverlap Gap Conn.
+base, steps 4 0.0374 0.0526 0.8566 0.1970 0.8992 0.0329
+additive, steps 4 0.0377 0.0034 0.8805 0.1402 0.9937 0.0000
+material, steps 4 0.0351 0.0070 0.8915 0.1345 0.9930 0.0002
+material-thin, steps 4 0.0393 0.0710 0.7455 0.1673 0.9117 0.0067
+material-thin, steps 8 0.0219 0.0000 0.7551 0.0369 1.0000 0.0000
+material-thin, steps 16 0.0070 0.0000 0.8904 0.0046 1.0000 0.0000
+Table 35: Final paper-pack standard held-out comparison. The material-thin model gives the best
+visible PF2V hard IoU at four steps, but deeper steps suppress the path while improving obstacle
+avoidance.
+The threshold sweep confirms that this final material-thin result is not merely a low-threshold artifact. At the
+best step, threshold 0.35 is also the best overall threshold, with hard IoU 0.0710. Lowering to 0.25 increases
+connectivity to 0.0866 and reduces route gap to 0.8078, but hard IoU falls slightly to 0.0612. Raising to 0.50
+leaves only a tiny fragment, with hard IoU 0.0444 and connectivity 0.0012.
+X.3 Harder Generalization and Soft Control
+The harder generalization set tells a similar story. The material-thin model again performs best at four
+steps, with hard IoU 0.0636, soft IoU 0.0466, route ratio 0.8518, obstacle overlap 0.1785, and connectivity
+0.0178. At threshold 0.25, the hard-generalization hard IoU rises to 0.0848 and connectivity rises to 0.1484,
+but this comes with the usual lower-threshold tradeoff: a less selective, more permissive visible mask.
+91
+
+===== PAGE 92 =====
+The soft shortest-path control is worse as a route-valid solution. Its best step is 8, with hard IoU 0.0479,
+route ratio 0.9557, obstacle overlap 0.5814, and connectivity 1.3847. The high connectivity is misleading:
+the control creates broad connected activation through obstacle regions rather than a selective detour. Its
+best threshold, 0.50 at eight steps, improves hard IoU only to 0.0528 while obstacle overlap remains 0.5814.
+Setting Soft Hard Ratio ObsOverlap Gap Conn. Threshold
+thin standard best step 0.0393 0.0710 0.7455 0.1673 0.9117 0.0067 0.3500
+thin hard-gen best step 0.0466 0.0636 0.8518 0.1785 0.9148 0.0178 0.3500
+thin hard-gen best threshold 0.0466 0.0848 0.8518 0.1785 0.7117 0.1484 0.2500
+soft control best step 0.0482 0.0479 0.9557 0.5814 0.0227 1.3847 0.3500
+soft control best threshold 0.0482 0.0528 0.9557 0.5814 0.1727 1.0285 0.5000
+Table 36: Final paper-pack comparison between material-thin PF 2V, harder generalization, and
+the soft-control baseline. Material-thin has lower connectivity but far lower obstacle overlap; the
+soft control is connected mainly because it is broad and obstacle-overlapping.
+X.4 What We Learn from the Final Pack
+The final pack supports a cautious paper claim. The material-thin PF 2V model is not yet a robust route
+solver, but it is the best current compromise between path visibility and obstacle selectivity. It produces
+faint, fragmentary route mass that can sometimes survive thresholding, while keeping obstacle overlap far
+below the soft-control baseline. The key limitation remains the same: the model has partial route logic, but
+it still fails to materialize a connected corridor.
+The harder generalization result is encouraging in a narrow sense. The model does not collapse completely
+when obstacles are larger and the bend is stronger. However, the hard path is still weak, and the visible
+route requires the shallow four-step regime. Deeper schedules continue to clean up obstacle overlap at the
+cost of erasing the path.
+The soft-control result helps position the contribution. A more planning-like value-field baseline can produce
+high connectivity, but it does so by lighting up broad regions and overlapping obstacles. This makes it a
+useful negative control: connectivity alone is not evidence of good routing. For this task, selective visibility
+and obstacle avoidance matter together.
+X.5 Recommended Final Framing
+The final manuscript should frame the empirical evidence as a prototype study, not as a solved benchmark:
+•present material-thin PF 2V as the strongest current fracture-style variant;
+•emphasize the tradeoff between shallow visible paths and deeper obstacle suppression;
+•use the soft-control baseline as evidence that broad connectivity is not enough;
+•state that the main remaining problem is connected path materialization;
+•propose future work on stronger core commitment, continuity losses, and hybrid planners that harden
+only thin corridors.
+X.6 Qualitative Figures from the Final Pack
+Figures 42, 43, and 44 show the final qualitative comparison. The standard material-thin example contains
+a localized but fragmented route signal. The hard-generalization example shows that the model retains
+92
+
+===== PAGE 93 =====
+Figure 42: Twenty-fourth prototype final-pack standard material-thin result. The model localizes
+route-like mass in the core and prediction, but the thresholded outputs remain fragmented and
+sparse.
+Figure 43: Twenty-fourth prototype final-pack hard-generalization result. The material-thin model
+retains structured activation under a harder obstacle layout, but it still does not yield a clean
+connected binary path.
+some structured activation under a harder obstacle layout, but it still lacks a clean binary corridor. The
+soft-control example shows the opposite failure mode: broad value-field activation with poor selectivity.
+X.7 Seed Robustness and Paper Summary Plots
+After the final-pack comparison, an additional robustness evaluation was run over three random held-out
+batches using seeds 0, 1, and 2. The evaluation reused the already-trained material-thin PF 2V model and
+the soft-control baseline, and swept solver steps and thresholds on both the standard held-out setting and
+the harder generalization setting. The purpose was not to retrain the models, but to check whether the final
+qualitative conclusion survives modest batch-level randomness.
+Table 37 summarizes the robustness run. The material-thin model remains clearly more obstacle-selective
+93
+
+===== PAGE 94 =====
+Figure 44: Twenty-fourth prototype final-pack soft-control result. The soft-control baseline pro-
+duces broad value-field activation and high apparent connectivity, but its prediction is not a selective
+obstacle-avoiding corridor.
+than the soft-control baseline. On the standard setting, material-thin with threshold selection reaches mean
+hard IoU 0.1244±0.0096 with obstacle overlap 0.1780±0.0141, while soft-control with threshold selection
+reaches only 0.0500±0.0027 hard IoU and much higher obstacle overlap 0.5888±0.0154. On the hard setting,
+material-thin again improves hard IoU relative to soft-control and keeps obstacle overlap near 0.18, whereas
+soft-control remains near 0.45 obstacle overlap. The tradeoff is still visible: soft-control has much larger
+apparent connectivity, but that connectivity is coupled to broad obstacle-overlapping activation.
+Model Set Hard IoU Route Ratio ObsOverlap Conn.
+material-thin hard 0.0982±0.0239 0.8376±0.0274 0.1807±0.0143 0.0283±0.0134
+material-thin std 0.0788±0.0095 0.7946±0.0163 0.1780±0.0141 0.0074±0.0024
+material-thin-thresh hard 0.1106±0.0248 0.8376±0.0274 0.1807±0.0143 0.1580±0.0384
+material-thin-thresh std 0.1244±0.0096 0.7946±0.0163 0.1780±0.0141 0.0727±0.0098
+soft-control hard 0.0489±0.0062 1.0241±0.0155 0.4514±0.0070 1.2645±0.0086
+soft-control std 0.0452±0.0020 0.9652±0.0051 0.5888±0.0154 1.3786±0.0130
+soft-control-thresh hard 0.0492±0.0064 1.0241±0.0155 0.4514±0.0070 1.0212±0.2180
+soft-control-thresh std 0.0500±0.0027 0.9652±0.0051 0.5888±0.0154 1.0395±0.0060
+Table 37: Three-seed robustness summary for the final paper pack. Values report mean±standard
+deviation over seeds 0, 1, and 2. Threshold selection improves material-thin hard IoU and con-
+nectivity while preserving low obstacle overlap; soft-control remains highly connected but obstacle-
+overlapping.
+A compact paper-summary extraction was also generated from the saved final-pack JSON files. Table 38
+records the best single-row comparison used for the summary plots. This table reinforces the same inter-
+pretation: material-thin is the best current PF 2V variant for visible path recovery, while soft-control has
+superficially high connectivity but poor obstacle selectivity.
+Model Hard IoU Route Ratio ObsOverlap Conn.
+base 0.0526 0.8566 0.1970 0.0329
+additive 0.0034 0.8805 0.1402 0.0000
+material 0.0070 0.8915 0.1345 0.0002
+material-thin 0.0710 0.7455 0.1673 0.0067
+soft-control 0.0528 0.9557 0.5814 1.0285
+Table 38: Compact paper-summary table extracted from the saved final-pack results. Material-
+thin has the best PF 2V hard IoU, while soft-control has high connectivity but much worse obstacle
+overlap.
+94
+
+===== PAGE 95 =====
+Figures 45, 46, and 47 show the generated paper-summary plots. The bar summary makes the main contrast
+visually explicit: soft-control connectivity is high, but this coincides with high obstacle overlap. The material-
+thin step sweep shows the same shallow-depth tradeoff identified above: early steps preserve visible route
+mass, while deeper steps increasingly suppress the path. The threshold sweep shows that threshold 0.35
+is the best operating point for hard IoU in the final material-thin summary, while lower thresholds trade
+selectivity for connectivity.
+Figure 45: Final paper-summary bar plots comparing hard IoU, route ratio, obstacle overlap,
+and connectivity across the main model variants. The soft-control baseline has high apparent
+connectivity, but also the largest obstacle overlap.
+X.8 Final Focus Run and Combined Conclusion
+A final focus run was then performed to combine the lessons from the final-pack comparison and the subse-
+quent robustness check. This run warm-started from the previous material-thin model and trained a stronger
+material-memory variant with more explicit core commitment, endpoint pressure, centerline supervision, ob-
+stacle avoidance, side suppression, and thinness regularization. The aim was to test whether the previous
+obstacle-selective but fragmented route signal could be made more visible without returning to the broad
+obstacle-overlapping behavior of the soft-control baseline.
+During training, the focus model showed intermittent but meaningful gains in visible path recovery. By
+epoch 25, the monitored batch reached hard IoU 0.1813, soft IoU 0.0786, route ratio 0.7424, obstacle overlap
+0.2252, and connectivity 0.1289. This is not a fully solved routing model, but it is a stronger result than
+the earlier final-pack material-thin snapshot: the model can now reach substantially higher hard IoU while
+retaining lower obstacle overlap than the soft-control baseline.
+Table 39 summarizes the step sweep. On the standard held-out batch, the best step-only hard IoU occurs
+at 8 steps, with hard IoU 0.1860 and connectivity 0.1511, but obstacle overlap is still high at 0.4114. At 12
+steps, hard IoU remains high at 0.1766 while obstacle overlap falls to 0.1826, showing a better selectivity
+95
+
+===== PAGE 96 =====
+Figure 46: Material-thin step sweep from the final paper pack. The strongest visible path signal
+appears at shallow solver depth, while additional steps reduce obstacle overlap but also erase the
+already-fragile path.
+Figure 47: Material-thin threshold sweep at the best final-pack step. Threshold 0.35 gives the best
+hard IoU, while lower thresholding increases connectivity and reduces route gap at the cost of less
+selective activation.
+96
+
+===== PAGE 97 =====
+tradeoff. At 16 steps, obstacle overlap improves further to 0.0752, but the visible path weakens. The hard-
+generalization batch follows the same pattern: 12 steps gives the best step-only compromise, with hard IoU
+0.1680 and obstacle overlap 0.1470.
+Split Setting Soft Hard Ratio ObsOverlap Conn.
+standard steps 4 0.0705 0.1047 0.8796 0.6892 0.8144
+standard steps 8 0.0876 0.1860 0.7700 0.4114 0.1511
+standard steps 12 0.0829 0.1766 0.7165 0.1826 0.0273
+standard steps 16 0.0648 0.1104 0.7365 0.0752 0.0054
+hard steps 4 0.0757 0.0949 0.9271 0.7002 0.9579
+hard steps 8 0.0927 0.1652 0.8190 0.3973 0.2914
+hard steps 12 0.0823 0.1680 0.7173 0.1470 0.0441
+hard steps 16 0.0582 0.1082 0.6662 0.0480 0.0055
+Table 39: Final focus run step sweep. The focus model improves visible hard IoU, especially at
+8–12 steps, but retains the depth tradeoff: shallow steps are connected and broad, while deeper
+steps are obstacle-selective but fragmentary.
+The threshold sweep gives the strongest single numbers from the final focus run. On the standard batch,
+the best thresholded setting is step 12 at threshold 0.20, reaching hard IoU 0.2066, route ratio 0.7165,
+obstacle overlap 0.1826, and connectivity 0.0665. On the harder batch, the best thresholded setting is step
+12 at threshold 0.25, reaching hard IoU 0.1866, route ratio 0.7173, obstacle overlap 0.1470, and connectivity
+0.0795. These values represent the clearest final evidence that the material focus model improves path
+visibility relative to the earlier material-thin result while avoiding the large obstacle overlap of soft-control.
+Split Threshold Step Threshold Hard IoU Route Ratio ObsOverlap Conn.
+standard 12 0.20 0.2066 0.7165 0.1826 0.0665
+hard 12 0.25 0.1866 0.7173 0.1470 0.0795
+Table 40: Final focus paper summary. Values report the best thresholded focus-model outputs,
+so the threshold step can differ from the best fixed-threshold step sweep. These settings give the
+strongest final hard-IoU results while keeping obstacle overlap below the broad soft-control baseline.
+Figures 48, 49, and 50 show the final focus visuals. The standard and hard examples show stronger route-
+like activation than the earlier material-thin outputs, though neither forms a perfectly continuous binary
+corridor. The summary bars show that the final focus model improves hard IoU on both standard and hard
+batches, with the hard batch achieving slightly lower obstacle overlap.
+X.9 Final Empirical Conclusion
+Taken together, the final-pack, robustness, and focus runs support a cautious but stronger conclusion than
+the earlier appendices. PF 2V is still not a solved path planner: the main remaining failure is connected
+binary path materialization. However, the best material-style variants now show a repeatable pattern that
+is not explained by generic broad activation alone. They can trade solver depth against obstacle selectivity,
+and the final focus model reaches the highest hard IoU observed in these experiments while keeping obstacle
+overlap far below the soft-control baseline.
+The central empirical claim should therefore be framed as follows. Phase-field material dynamics are a
+plausible latent substrate for obstacle-aware route formation, but the current implementation expresses this
+mostly as partial, threshold-sensitive route mass rather than as a clean discrete corridor. The focus model
+improves the previous material-thin result from roughly 0.07–0.12 hard IoU into the 0.19–0.21 range, and it
+97
+
+===== PAGE 98 =====
+Figure 48: Final focus standard held-out visual. The focus model produces stronger route-like
+probability and core activation than the earlier material-thin snapshot, but the thresholded path
+remains only partially connected.
+Figure 49: Final focus hard-generalization visual. The model retains structured route-like acti-
+vation under a harder obstacle layout, with improved hard IoU but still incomplete binary path
+materialization.
+98
+
+===== PAGE 99 =====
+Figure 50: Final focus summary bars for the standard and hard held-out splits. The best thresh-
+olded focus outputs reach hard IoU 0.2066 on the standard split and 0.1866 on the hard split.
+generalizes to a harder obstacle setting with hard IoU 0.1866. This is meaningful progress for a prototype,
+but not benchmark-level success.
+The final paper should emphasize three points. First, material-style PF2V variants are more obstacle-selective
+than the soft-control baseline. Second, connectivity alone is misleading, because broad value-field controls
+can appear connected while crossing obstacles. Third, the next technical bottleneck is not route awareness
+butroute hardening: converting faint, obstacle-aware latent mass into a thin, continuous, threshold-stable
+path.
+99
